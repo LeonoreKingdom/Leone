@@ -5,7 +5,9 @@ const commands = [
 
   new SlashCommandBuilder().setName('help').setDescription('Display Leone command information.'),
 
-  new SlashCommandBuilder().setName('about').setDescription('Display information about Leone.'),
+  new SlashCommandBuilder()
+    .setName('about')
+    .setDescription("Learn about Leonore's Kingdom and its royal companion, Leone."),
 
   new SlashCommandBuilder().setName('server').setDescription('Display information about this Discord server.'),
 ];
@@ -45,7 +47,7 @@ async function executeCommand(interaction) {
           },
           {
             name: '/about',
-            value: 'Display information about Leone.',
+            value: "Learn about Leonore's Kingdom and its royal companion, Leone.",
           },
           {
             name: '/server',
@@ -64,29 +66,54 @@ async function executeCommand(interaction) {
       const botUser = interaction.client.user;
 
       const embed = new EmbedBuilder()
-        .setColor(0x5865f2)
-        .setTitle('About Leone')
-        .setDescription('Leone is an intelligent Discord assistant designed to support server administration, automation, and community interaction.')
+        .setColor(0x1b2a4e)
+        .setTitle("👑 Leonore's Kingdom")
+        .setDescription(
+          [
+            '**Home for Talented People, Safe Space for Citizen**',
+            '',
+            '**WE BELONG TOGETHER**',
+            '> *"It\'s not just a community, it\'s a palace to reach your dreams and ur safe haven~"*',
+          ].join('\n'),
+        )
         .setThumbnail(botUser.displayAvatarURL({ size: 256 }))
         .addFields(
           {
-            name: 'Status',
-            value: 'Online',
-            inline: true,
+            name: '✨ Our traits',
+            value: [
+              '🎨 **Talented** — A home for people to create, play, share, and shine.',
+              '🧠 **Growth mindset** — Learn together and keep becoming better.',
+              '🛡️ **Safe space** — A welcoming haven where every citizen can belong.',
+            ].join('\n'),
           },
           {
-            name: 'Platform',
-            value: 'Discord',
-            inline: true,
+            name: '🎮 Games in the Kingdom',
+            value: [
+              'Mobile Legends: Bang Bang • Dota 2 • Genshin Impact',
+              'Roblox • Valorant • Honkai: Star Rail • osu!',
+            ].join('\n'),
           },
           {
-            name: 'Runtime',
-            value: 'Node.js',
-            inline: true,
+            name: '💙 The heart of the Kingdom',
+            value: [
+              'Founded and led by **Leonore**, with **Leanne—her beloved partner—beside her**.',
+              'The staff team helps protect our safe space and keeps the Kingdom welcoming and organized.',
+            ].join('\n'),
+          },
+          {
+            name: '🤖 Meet Leone',
+            value: [
+              "I'm the Kingdom's royal companion and guide.",
+              'As I grow, I will help members navigate the server, meet the staff, build social bonds, discover games and movies, research technical topics, join activities, and support community safety.',
+            ].join(' '),
+          },
+          {
+            name: 'Start exploring',
+            value: 'Use `/help` to see what Leone can do today.',
           },
         )
         .setFooter({
-          text: `Bot ID: ${botUser.id}`,
+          text: "Leone • Royal Companion of Leonore's Kingdom",
         });
 
       await interaction.reply({ embeds: [embed] });
