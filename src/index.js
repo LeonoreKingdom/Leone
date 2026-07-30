@@ -2,7 +2,7 @@ require('dotenv').config();
 
 const { ActivityType, Client, Events, GatewayIntentBits, MessageFlags } = require('discord.js');
 
-const { executeCommand } = require('./commands');
+const { executeButton, executeCommand } = require('./commands');
 
 if (!process.env.DISCORD_TOKEN) {
   throw new Error('Missing required environment variable: DISCORD_TOKEN');
@@ -27,24 +27,42 @@ client.once(Events.ClientReady, (readyClient) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isChatInputCommand()) {
+  if (
+    !interaction.isChatInputCommand() &&
+    !interaction.isButton()
+  ) {
     return;
   }
 
   try {
-    await executeCommand(interaction);
+    if (interaction.isChatInputCommand()) {
+      await executeCommand(interaction);
+    } else {
+      await executeButton(interaction);
+    }
   } catch (error) {
-    console.error(`Command "${interaction.commandName}" failed:`, error);
+    const interactionName = interaction.isChatInputCommand()
+      ? `Command "${interaction.commandName}"`
+      : `Button "${interaction.customId}"`;
+
+    console.error(`${interactionName} failed:`, error);
 
     const errorResponse = {
-      content: 'Leone encountered an error while processing this command.',
+      content: 'Leone encountered an error while processing this interaction.',
       flags: MessageFlags.Ephemeral,
     };
 
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(errorResponse);
-    } else {
-      await interaction.reply(errorResponse);
+    try {
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp(errorResponse);
+      } else {
+        await interaction.reply(errorResponse);
+      }
+    } catch (responseError) {
+      console.error(
+        `Failed to send the ${interactionName.toLowerCase()} error response:`,
+        responseError,
+      );
     }
   }
 });
