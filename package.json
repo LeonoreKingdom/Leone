@@ -1,0 +1,25 @@
+{
+  "name": "leone",
+  "version": "1.0.0",
+  "description": "LeonoreKingdom Discord Bots Official",
+  "main": "index.js",
+  "scripts": {
+    "deploy:commands": "node src/deploy-commands.js",
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LeonoreKingdom/Leone.git"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/LeonoreKingdom/Leone/issues"
+  },
+  "homepage": "https://github.com/LeonoreKingdom/Leone#readme",
+  "dependencies": {
+    "discord.js": "^14.27.0",
+    "dotenv": "^17.4.2"
+  }
+}
