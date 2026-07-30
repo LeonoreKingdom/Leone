@@ -6,7 +6,8 @@
   "scripts": {
     "deploy:commands": "node src/deploy-commands.js",
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "test": "node --test"
   },
   "repository": {
     "type": "git",

@@ -2,7 +2,12 @@ require('dotenv').config();
 
 const { ActivityType, Client, Events, GatewayIntentBits, MessageFlags } = require('discord.js');
 
-const { executeButton, executeCommand } = require('./commands');
+const {
+  executeCommand,
+} = require('./commands/registry');
+const {
+  executeComponent,
+} = require('./interactions/component-registry');
 
 if (!process.env.DISCORD_TOKEN) {
   throw new Error('Missing required environment variable: DISCORD_TOKEN');
@@ -38,7 +43,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isChatInputCommand()) {
       await executeCommand(interaction);
     } else {
-      await executeButton(interaction);
+      const handled = await executeComponent(interaction);
+
+      if (!handled) {
+        throw new Error(
+          `Unsupported component: ${interaction.customId}`,
+        );
+      }
     }
   } catch (error) {
     const interactionName = interaction.isChatInputCommand()
