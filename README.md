@@ -20,6 +20,25 @@ Optional environment variables:
 
 - `LEANNE_USER_ID` — overrides the configured Leanne account ID.
 - `BONDS_DATA_FILE` — overrides the default `data/bonds.json` path.
+- `TMDB_READ_ACCESS_TOKEN` — recommended TMDB application credential
+  for `/recommend movie`.
+- `TMDB_API_KEY` — supported alternative when a Read Access Token is
+  not configured.
+
+Only one TMDB credential is required. Leone prefers
+`TMDB_READ_ACCESS_TOKEN` when both are present. Keep either credential in
+`.env`; never commit or paste it into Discord.
+
+The TMDB developer API is used only for non-commercial movie discovery.
+`/about` contains the required TMDB credit and notice. If Leone becomes a
+commercial product, obtain an appropriate TMDB commercial license before
+continuing to use TMDB data.
+
+Deploy the updated Discord command after configuring the credential:
+
+```powershell
+npm.cmd run deploy:commands
+```
 
 ## Leone Bonds data policy
 

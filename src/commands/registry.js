@@ -1,5 +1,6 @@
 const helpCommand = require('./help.command');
 const kingdomCommands = require('../features/kingdom');
+const recommendationCommands = require('../features/recommendations');
 const relationshipCommands = require('../features/relationships');
 const systemCommands = require('../features/system');
 const { areas } = require('./areas');
@@ -9,6 +10,7 @@ const commandModules = [
   helpCommand,
   ...kingdomCommands,
   ...relationshipCommands,
+  ...recommendationCommands,
 ];
 const commandRegistry = new Map();
 

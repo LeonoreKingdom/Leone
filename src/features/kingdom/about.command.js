@@ -6,6 +6,8 @@ const {
 const {
   KINGDOM_COLOR,
   LEANNE_USER_ID,
+  TMDB_LOGO_URL,
+  TMDB_URL,
 } = require('../../shared/constants');
 
 const data = new SlashCommandBuilder()
@@ -77,9 +79,21 @@ async function execute(interaction) {
     .setFooter({
       text: "Leone • Royal Companion of Leonore's Kingdom",
     });
+  const creditsEmbed = new EmbedBuilder()
+    .setColor(0x01b4e4)
+    .setTitle('Movie data credit')
+    .setURL(TMDB_URL)
+    .setDescription(
+      [
+        `[TMDB — The Movie Database](${TMDB_URL})`,
+        '',
+        'This product uses the TMDB API but is not endorsed or certified by TMDB.',
+      ].join('\n'),
+    )
+    .setThumbnail(TMDB_LOGO_URL);
 
   await interaction.reply({
-    embeds: [embed],
+    embeds: [embed, creditsEmbed],
     allowedMentions: { parse: [] },
   });
 }

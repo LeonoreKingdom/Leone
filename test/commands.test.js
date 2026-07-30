@@ -171,6 +171,7 @@ test('registry contains unique commands with valid help metadata', () => {
     'rules',
     'server',
     'bonds',
+    'recommend',
   ]);
   assert.equal(new Set(names).size, names.length);
   assert.equal(commandRegistry.size, names.length);
@@ -199,6 +200,7 @@ test('help is generated from registered command metadata', async () => {
   );
   assert.match(allAreasText, /Kingdom/);
   assert.match(allAreasText, /Relationships/);
+  assert.match(allAreasText, /Recommendations/);
   assert.match(allAreasText, /Utilities/);
   assert.match(allAreasText, /server-map/);
 
@@ -245,7 +247,7 @@ test('Kingdom commands preserve personalized content and live routing', async ()
 
     await executeCommand(command.interaction);
 
-    assert.equal(command.response.embeds.length, 1);
+    assert.ok(command.response.embeds.length >= 1);
   }
 
   const about = createCommandInteraction('about');
@@ -258,6 +260,12 @@ test('Kingdom commands preserve personalized content and live routing', async ()
   assert.match(
     aboutText,
     /his beloved girlfriend and royal partner/,
+  );
+  assert.match(
+    JSON.stringify(
+      about.response.embeds.map((embed) => embed.toJSON()),
+    ),
+    /not endorsed or certified by TMDB/,
   );
 
   const staff = createCommandInteraction('staff');

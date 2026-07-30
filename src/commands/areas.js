@@ -15,6 +15,14 @@ const areas = {
       'Consent-based social bonds, privacy, blocking, and data controls.',
     order: 20,
   },
+  recommendations: {
+    id: 'recommendations',
+    label: 'Recommendations',
+    emoji: '🎬',
+    description:
+      'Personalized movie, game, and media discoveries.',
+    order: 30,
+  },
   utility: {
     id: 'utility',
     label: 'Utilities',
