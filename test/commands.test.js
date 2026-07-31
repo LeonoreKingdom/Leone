@@ -172,6 +172,7 @@ test('registry contains unique commands with valid help metadata', () => {
     'server',
     'bonds',
     'recommend',
+    'morning',
   ]);
   assert.equal(new Set(names).size, names.length);
   assert.equal(commandRegistry.size, names.length);
@@ -203,6 +204,22 @@ test('help is generated from registered command metadata', async () => {
   assert.match(allAreasText, /Recommendations/);
   assert.match(allAreasText, /Utilities/);
   assert.match(allAreasText, /server-map/);
+  assert.doesNotMatch(allAreasText, /Automation/);
+
+  const staffAreas = createCommandInteraction('help', {
+    memberPermissions: {
+      has: () => true,
+    },
+  });
+
+  await executeCommand(staffAreas.interaction);
+
+  const staffAreasText = JSON.stringify(
+    staffAreas.response.embeds[0].toJSON(),
+  );
+
+  assert.match(staffAreasText, /Automation/);
+  assert.match(staffAreasText, /morning/);
 
   const kingdomOnly = createCommandInteraction('help', {
     options: {

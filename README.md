@@ -24,6 +24,10 @@ Optional environment variables:
   for `/recommend movie`.
 - `TMDB_API_KEY` — supported alternative when a Read Access Token is
   not configured.
+- `BMKG_ADM4` — default Indonesian administrative level IV code used
+  by the manual `/morning` greeting, for example `31.71.03.1001`.
+- `MORNING_LOCATION` — optional display label that overrides the
+  location name returned by BMKG.
 
 Only one TMDB credential is required. Leone prefers
 `TMDB_READ_ACCESS_TOKEN` when both are present. Keep either credential in
@@ -39,6 +43,25 @@ Deploy the updated Discord command after configuring the credential:
 ```powershell
 npm.cmd run deploy:commands
 ```
+
+## Manual morning greeting
+
+The staff-only `/morning` command does not run on a schedule:
+
+- `/morning preview role:@Citizen` privately renders the greeting and
+  never notifies the role.
+- `/morning send role:@Citizen` posts in the current channel and
+  notifies only the selected role.
+- `adm4` and `location` can be supplied per command, overriding the
+  optional environment defaults.
+
+Leone uses BMKG's public forecast API when an ADM4 code is available
+and clearly attributes the weather data. If the location is missing or
+BMKG is unavailable, Leone posts a weather-neutral greeting instead.
+
+For a role notification, the selected role must be mentionable or
+Leone must have `Mention Everyone` in the target channel. Prefer a
+dedicated opt-in morning role instead of notifying every Citizen.
 
 ## Leone Bonds data policy
 

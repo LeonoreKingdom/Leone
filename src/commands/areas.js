@@ -23,6 +23,14 @@ const areas = {
       'Personalized movie, game, and media discoveries.',
     order: 30,
   },
+  automation: {
+    id: 'automation',
+    label: 'Automation',
+    emoji: '☀️',
+    description:
+      'Staff-controlled greetings and community routines.',
+    order: 40,
+  },
   utility: {
     id: 'utility',
     label: 'Utilities',
