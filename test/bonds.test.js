@@ -449,7 +449,6 @@ test('bonds command performs a private request and acceptance flow', async () =>
     guildId: 'guild',
     userId: 'bob',
   });
-  const requestId = pending.incoming[0].id;
   let acceptResponse;
 
   await command.execute({
@@ -459,7 +458,9 @@ test('bonds command performs a private request and acceptance flow', async () =>
     inGuild: () => true,
     options: {
       getSubcommand: () => 'accept',
-      getString: () => requestId,
+      getUser: () => ({ id: 'alice' }),
+      getString: (name) =>
+        name === 'type' ? 'partner' : null,
     },
     deferReply: async () => {},
     editReply: async (payload) => {

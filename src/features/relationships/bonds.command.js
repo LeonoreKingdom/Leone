@@ -1,5 +1,8 @@
 const {
+  ActionRowBuilder,
   AttachmentBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   EmbedBuilder,
   MessageFlags,
   SlashCommandBuilder,
@@ -12,10 +15,10 @@ const {
   BondService,
   PRIVACY_CHOICES,
 } = require('./bond-service');
-const { JsonBondStore } = require('./bond-store');
+const { createDefaultBondStore } = require('./bond-store');
 
 const defaultService = new BondService({
-  store: new JsonBondStore(),
+  store: createDefaultBondStore(),
 });
 
 const typeLabels = Object.fromEntries(
@@ -64,26 +67,36 @@ const data = new SlashCommandBuilder()
     subcommand
       .setName('accept')
       .setDescription('Accept one of your pending bond requests.')
+      .addUserOption((option) =>
+        option
+          .setName('member')
+          .setDescription('The member who sent the request.')
+          .setRequired(true),
+      )
       .addStringOption((option) =>
         option
-          .setName('request-id')
-          .setDescription('The request ID shown by /bonds pending.')
-          .setRequired(true)
-          .setMinLength(1)
-          .setMaxLength(64),
+          .setName('type')
+          .setDescription('Required when the member sent multiple request types.')
+          .setRequired(false)
+          .addChoices(...BOND_TYPE_CHOICES),
       ),
   )
   .addSubcommand((subcommand) =>
     subcommand
       .setName('decline')
       .setDescription('Decline one of your pending bond requests.')
+      .addUserOption((option) =>
+        option
+          .setName('member')
+          .setDescription('The member who sent the request.')
+          .setRequired(true),
+      )
       .addStringOption((option) =>
         option
-          .setName('request-id')
-          .setDescription('The request ID shown by /bonds pending.')
-          .setRequired(true)
-          .setMinLength(1)
-          .setMaxLength(64),
+          .setName('type')
+          .setDescription('Required when the member sent multiple request types.')
+          .setRequired(false)
+          .addChoices(...BOND_TYPE_CHOICES),
       ),
   )
   .addSubcommand((subcommand) =>
@@ -213,7 +226,6 @@ function formatRequest(request, direction) {
   );
 
   return [
-    `\`${request.id}\``,
     `<@${memberId}>`,
     `**${typeLabels[request.requestedType]}**`,
     `expires <t:${expiresTimestamp}:R>`,
@@ -323,8 +335,7 @@ function createBondsCommand(service = defaultService) {
             await target.send({
               content: [
                 `You received a **${typeLabels[requestedType]}** bond request from <@${userId}> in **${interaction.guild.name}**.`,
-                `Request ID: \`${request.id}\``,
-                'Use `/bonds pending`, then `/bonds accept` or `/bonds decline` inside the server.',
+                'Use `/bonds pending`, then choose this member in `/bonds accept` or `/bonds decline` inside the server.',
                 'No bond exists unless you explicitly accept.',
               ].join('\n'),
               allowedMentions: { parse: [] },
@@ -336,7 +347,6 @@ function createBondsCommand(service = defaultService) {
           await interaction.editReply({
             content: [
               `Your **${typeLabels[requestedType]}** request for <@${target.id}> is pending consent.`,
-              `Request ID: \`${request.id}\``,
               notificationDelivered
                 ? 'Leone sent the member a private notification.'
                 : 'Their DMs are unavailable; they can still find it with `/bonds pending`.',
@@ -371,14 +381,16 @@ function createBondsCommand(service = defaultService) {
         }
 
         case 'accept': {
-          const requestId = interaction.options.getString(
-            'request-id',
+          const requester = interaction.options.getUser(
+            'member',
             true,
           );
+          const requestedType = interaction.options.getString('type');
           const result = await service.acceptRequest({
             guildId,
             userId,
-            requestId,
+            requesterId: requester.id,
+            requestedType,
           });
 
           await interaction.editReply({
@@ -393,15 +405,17 @@ function createBondsCommand(service = defaultService) {
         }
 
         case 'decline': {
-          const requestId = interaction.options.getString(
-            'request-id',
+          const requester = interaction.options.getUser(
+            'member',
             true,
           );
+          const requestedType = interaction.options.getString('type');
 
           await service.declineRequest({
             guildId,
             userId,
-            requestId,
+            requesterId: requester.id,
+            requestedType,
           });
           await interaction.editReply({
             content:
@@ -434,6 +448,18 @@ function createBondsCommand(service = defaultService) {
 
           await interaction.editReply({
             embeds: [embed],
+            components: process.env.PUBLIC_WEB_ORIGIN
+              ? [
+                  new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                      .setLabel('Open interactive family tree')
+                      .setStyle(ButtonStyle.Link)
+                      .setURL(
+                        `${process.env.PUBLIC_WEB_ORIGIN}/family/${member.id}`,
+                      ),
+                  ),
+                ]
+              : [],
             allowedMentions: { parse: [] },
           });
           break;
@@ -584,8 +610,15 @@ function createBondsCommand(service = defaultService) {
         throw error;
       }
 
+      const typeHint =
+        error.code === 'TYPE_REQUIRED' && error.details?.types
+          ? ` Available types: ${error.details.types
+              .map((type) => `**${typeLabels[type]}**`)
+              .join(', ')}.`
+          : '';
+
       await interaction.editReply({
-        content: `Unable to complete that Bonds action: ${error.message}`,
+        content: `Unable to complete that Bonds action: ${error.message}${typeHint}`,
       });
     }
   }

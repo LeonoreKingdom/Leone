@@ -2,12 +2,19 @@
   "name": "leone",
   "version": "1.0.0",
   "description": "LeonoreKingdom Discord Bots Official",
-  "main": "index.js",
+  "main": "app.js",
   "scripts": {
+    "build": "vite build",
+    "dev": "node --watch server.js",
+    "dev:gateway": "node --watch src/index.js",
+    "dev:web": "vite",
     "deploy:commands": "node src/deploy-commands.js",
-    "start": "node src/index.js",
-    "dev": "node --watch src/index.js",
-    "test": "node --test"
+    "db:import-bonds": "node scripts/import-bonds.js",
+    "db:seed": "node scripts/seed-database.js",
+    "start": "node server.js",
+    "test": "node --test",
+    "test:unit": "node --test test/*.test.js",
+    "test:integration": "node --test test/integration/*.test.js"
   },
   "repository": {
     "type": "git",
@@ -19,8 +26,25 @@
     "url": "https://github.com/LeonoreKingdom/Leone/issues"
   },
   "homepage": "https://github.com/LeonoreKingdom/Leone#readme",
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
+    "@xyflow/react": "^12.11.2",
+    "cookie": "^1.0.2",
+    "discord-interactions": "^4.4.0",
     "discord.js": "^14.27.0",
-    "dotenv": "^17.4.2"
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "helmet": "^8.3.0",
+    "pg": "^8.22.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.5",
+    "supertest": "^7.2.2",
+    "vite": "^8.2.0"
   }
 }

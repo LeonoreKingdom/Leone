@@ -26,10 +26,11 @@ const PRIVACY_CHOICES = [
 ];
 
 class BondError extends Error {
-  constructor(message, code = 'BOND_ERROR') {
+  constructor(message, code = 'BOND_ERROR', details = {}) {
     super(message);
     this.name = 'BondError';
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -362,16 +363,45 @@ class BondService {
     });
   }
 
-  async acceptRequest({ guildId, userId, requestId }) {
+  async acceptRequest({
+    guildId,
+    userId,
+    requestId = null,
+    requesterId = null,
+    requestedType = null,
+  }) {
     return this.store.transact((state) => {
       const now = this.now();
       purgeExpiredRequests(state, now);
 
-      const requestIndex = state.requests.findIndex(
-        (request) =>
-          request.guildId === guildId &&
-          request.id === requestId,
-      );
+      const candidates = state.requests
+        .map((request, index) => ({ request, index }))
+        .filter(
+          ({ request }) =>
+            request.guildId === guildId &&
+            request.targetId === userId &&
+            (requestId ? request.id === requestId : true) &&
+            (requesterId
+              ? request.requesterId === requesterId
+              : true) &&
+            (requestedType
+              ? request.requestedType === requestedType
+              : true),
+        );
+
+      if (candidates.length > 1 && !requestId && !requestedType) {
+        throw new BondError(
+          'That member sent multiple request types. Choose the bond type.',
+          'TYPE_REQUIRED',
+          {
+            types: candidates.map(
+              ({ request }) => request.requestedType,
+            ),
+          },
+        );
+      }
+
+      const requestIndex = candidates[0]?.index ?? -1;
       const request = state.requests[requestIndex];
 
       if (!request || request.targetId !== userId) {
@@ -446,16 +476,44 @@ class BondService {
     });
   }
 
-  async declineRequest({ guildId, userId, requestId }) {
+  async declineRequest({
+    guildId,
+    userId,
+    requestId = null,
+    requesterId = null,
+    requestedType = null,
+  }) {
     return this.store.transact((state) => {
       purgeExpiredRequests(state, this.now());
 
-      const requestIndex = state.requests.findIndex(
-        (request) =>
-          request.guildId === guildId &&
-          request.id === requestId &&
-          request.targetId === userId,
-      );
+      const candidates = state.requests
+        .map((request, index) => ({ request, index }))
+        .filter(
+          ({ request }) =>
+            request.guildId === guildId &&
+            request.targetId === userId &&
+            (requestId ? request.id === requestId : true) &&
+            (requesterId
+              ? request.requesterId === requesterId
+              : true) &&
+            (requestedType
+              ? request.requestedType === requestedType
+              : true),
+        );
+
+      if (candidates.length > 1 && !requestId && !requestedType) {
+        throw new BondError(
+          'That member sent multiple request types. Choose the bond type.',
+          'TYPE_REQUIRED',
+          {
+            types: candidates.map(
+              ({ request }) => request.requestedType,
+            ),
+          },
+        );
+      }
+
+      const requestIndex = candidates[0]?.index ?? -1;
 
       if (requestIndex < 0) {
         throw new BondError(
@@ -637,7 +695,6 @@ class BondService {
         })
         .filter(
           ({ otherUserId }) =>
-            viewerId === memberId ||
             canViewMember(
               state,
               guildId,
@@ -741,4 +798,8 @@ module.exports = {
   BondService,
   PRIVACY_CHOICES,
   REQUEST_RETENTION_MS,
+  canViewMember,
+  getProfile,
+  isBetween,
+  relationshipLabel,
 };

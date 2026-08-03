@@ -1,5 +1,5 @@
-const morningCommand = require('./morning/morning.command');
+const greetingsCommand = require('./greetings/greetings.command');
 
 module.exports = [
-  morningCommand,
+  greetingsCommand,
 ];

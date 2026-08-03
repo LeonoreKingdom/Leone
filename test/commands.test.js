@@ -172,7 +172,7 @@ test('registry contains unique commands with valid help metadata', () => {
     'server',
     'bonds',
     'recommend',
-    'morning',
+    'greetings',
   ]);
   assert.equal(new Set(names).size, names.length);
   assert.equal(commandRegistry.size, names.length);
@@ -219,7 +219,7 @@ test('help is generated from registered command metadata', async () => {
   );
 
   assert.match(staffAreasText, /Automation/);
-  assert.match(staffAreasText, /morning/);
+  assert.match(staffAreasText, /greetings/);
 
   const kingdomOnly = createCommandInteraction('help', {
     options: {
@@ -276,7 +276,7 @@ test('Kingdom commands preserve personalized content and live routing', async ()
   assert.match(aboutText, /1427688270363627675/);
   assert.match(
     aboutText,
-    /his beloved girlfriend and royal partner/,
+    /his girlfriend and partner in the Kingdom/,
   );
   assert.match(
     JSON.stringify(
