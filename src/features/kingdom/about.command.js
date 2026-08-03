@@ -1,20 +1,8 @@
-const {
-  EmbedBuilder,
-  SlashCommandBuilder,
-} = require('discord.js');
+const { EmbedBuilder, SlashCommandBuilder } = require('discord.js');
 
-const {
-  KINGDOM_COLOR,
-  LEANNE_USER_ID,
-  TMDB_LOGO_URL,
-  TMDB_URL,
-} = require('../../shared/constants');
+const { KINGDOM_COLOR, LEANNE_USER_ID, TMDB_LOGO_URL, TMDB_URL } = require('../../shared/constants');
 
-const data = new SlashCommandBuilder()
-  .setName('about')
-  .setDescription(
-    "Learn about Leonore's Kingdom and its royal companion, Leone.",
-  );
+const data = new SlashCommandBuilder().setName('about').setDescription("Learn about Leonore's Kingdom and its royal companion, Leone.");
 
 const help = {
   area: 'kingdom',
@@ -32,30 +20,18 @@ async function execute(interaction) {
   const embed = new EmbedBuilder()
     .setColor(KINGDOM_COLOR)
     .setTitle("👑 Leonore's Kingdom")
-    .setDescription(
-      [
-        '**Home for Talented People, Safe Space for Citizen**',
-        '',
-        '**WE BELONG TOGETHER**',
-        '> *"It\'s not just a community, it\'s a palace to reach your dreams and ur safe haven~"*',
-      ].join('\n'),
-    )
+    .setDescription(['**Home for Talented People, Safe Space for Citizen**', '', '**WE BELONG TOGETHER**', '> *"It\'s not just a community, it\'s a palace to reach your dreams and ur safe haven~"*'].join('\n'))
     .setThumbnail(botUser.displayAvatarURL({ size: 256 }))
     .addFields(
       {
         name: '✨ Our traits',
-        value: [
-          '🎨 **Talented** — A home for people to create, play, share, and shine.',
-          '🧠 **Growth mindset** — Learn together and keep becoming better.',
-          '🛡️ **Safe space** — A welcoming haven where every citizen can belong.',
-        ].join('\n'),
+        value: ['🎨 **Talented** — A home for people to create, play, share, and shine.', '🧠 **Growth mindset** — Learn together and keep becoming better.', '🛡️ **Safe space** — A welcoming haven where every citizen can belong.'].join(
+          '\n',
+        ),
       },
       {
         name: '🎮 Games in the Kingdom',
-        value: [
-          'Mobile Legends: Bang Bang • Dota 2 • Genshin Impact',
-          'Roblox • Valorant • Honkai: Star Rail • osu!',
-        ].join('\n'),
+        value: ['Mobile Legends: Bang Bang • Dota 2 • Genshin Impact', 'Roblox • Valorant • Honkai: Star Rail • osu!'].join('\n'),
       },
       {
         name: '💙 The heart of the Kingdom',
@@ -79,21 +55,8 @@ async function execute(interaction) {
     .setFooter({
       text: "Leone • Royal Companion of Leonore's Kingdom",
     });
-  const creditsEmbed = new EmbedBuilder()
-    .setColor(0x01b4e4)
-    .setTitle('Movie data credit')
-    .setURL(TMDB_URL)
-    .setDescription(
-      [
-        `[TMDB — The Movie Database](${TMDB_URL})`,
-        '',
-        'This product uses the TMDB API but is not endorsed or certified by TMDB.',
-      ].join('\n'),
-    )
-    .setThumbnail(TMDB_LOGO_URL);
-
   await interaction.reply({
-    embeds: [embed, creditsEmbed],
+    embeds: [embed],
     allowedMentions: { parse: [] },
   });
 }

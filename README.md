@@ -2,6 +2,10 @@
 
 LeonoreKingdom Discord Bots Official.
 
+Product requirements and the planned database, dashboard, family-tree,
+Greetings, and deployment architecture are documented in
+[`docs/PRD.md`](docs/PRD.md).
+
 ## Development
 
 ```powershell
