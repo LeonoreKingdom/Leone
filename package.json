@@ -30,6 +30,7 @@
     "node": ">=22"
   },
   "dependencies": {
+    "@vercel/functions": "^3.7.6",
     "@xyflow/react": "^12.11.2",
     "cookie": "^1.0.2",
     "discord-interactions": "^4.4.0",

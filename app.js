@@ -3,10 +3,11 @@ require('dotenv').config();
 const { existsSync } = require('node:fs');
 const { randomUUID, timingSafeEqual } = require('node:crypto');
 const path = require('node:path');
+const { waitUntil: vercelWaitUntil } = require('@vercel/functions');
 const express = require('express');
 const helmet = require('helmet');
 const { verifyKey, InteractionResponseType } = require('discord-interactions');
-const { InteractionType, MessageFlags } = require('discord.js');
+const { InteractionType, MessageFlags, SnowflakeUtil } = require('discord.js');
 const { ZodError } = require('zod');
 
 const { createHttpInteraction } = require('./src/adapters/discord/http-interaction');
@@ -17,6 +18,7 @@ const { AuditRepository } = require('./src/db/audit-repository');
 const { checkDatabase, getPool } = require('./src/db/pool');
 const { dispatchDueGreetings } = require('./src/features/automation/greetings/dispatcher');
 const { GreetingRepository } = require('./src/features/automation/greetings/greeting-repository');
+const { buildPingContent } = require('./src/features/system/ping.command');
 const { executeComponent } = require('./src/interactions/component-registry');
 const { createLogger } = require('./src/shared/logger');
 const { createApiRouter } = require('./src/web/api');
@@ -29,6 +31,11 @@ function safeEqual(left, right) {
   return first.length === second.length && timingSafeEqual(first, second);
 }
 
+function waitForResponseFinish(response) {
+  if (response.writableFinished) return Promise.resolve();
+  return new Promise((resolve) => response.once('finish', resolve));
+}
+
 function createApp(overrides = {}) {
   const config = overrides.config ?? getConfig();
   const logger = overrides.logger ?? createLogger({ level: config.LOG_LEVEL });
@@ -36,6 +43,7 @@ function createApp(overrides = {}) {
   const restClient = overrides.restClient ?? (config.DISCORD_TOKEN
     ? new DiscordRestClient({ token: config.DISCORD_TOKEN, applicationId: config.DISCORD_CLIENT_ID })
     : null);
+  const registerBackgroundTask = overrides.waitUntil ?? vercelWaitUntil;
   const app = express();
 
   app.disable('x-powered-by');
@@ -65,6 +73,7 @@ function createApp(overrides = {}) {
   });
 
   app.post('/api/discord/interactions', express.raw({ type: 'application/json', limit: '1mb' }), async (request, response) => {
+    const receivedAt = Date.now();
     const signature = request.get('x-signature-ed25519');
     const timestamp = request.get('x-signature-timestamp');
     const age = Math.abs(Date.now() - Number(timestamp) * 1000);
@@ -93,28 +102,76 @@ function createApp(overrides = {}) {
     const isButton = payload.type === InteractionType.MessageComponent;
     const isCommand = payload.type === InteractionType.ApplicationCommand;
     if (!isButton && !isCommand) { response.status(400).json({ error: 'UNSUPPORTED_INTERACTION' }); return; }
+
+    if (isCommand && payload.data?.name === 'ping') {
+      response.json({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: buildPingContent({
+            createdTimestamp: Number(SnowflakeUtil.timestampFrom(payload.id)),
+          }),
+          allowed_mentions: { parse: [] },
+        },
+      });
+      logger.info('discord.interaction_completed', {
+        correlationId: request.correlationId,
+        command: 'ping',
+        mode: 'immediate',
+        durationMs: Date.now() - receivedAt,
+      });
+      return;
+    }
+
     const ephemeral = isCommand && ['bonds', 'greetings'].includes(payload.data?.name);
+    const backgroundTask = waitForResponseFinish(response).then(async () => {
+      const processingStartedAt = Date.now();
+      try {
+        const contextStartedAt = Date.now();
+        const interaction = await createHttpInteraction({ payload, response, restClient, preDeferred: true });
+        const contextDurationMs = Date.now() - contextStartedAt;
+        if (isCommand) await executeCommand(interaction);
+        else if (!(await executeComponent(interaction))) throw new Error(`Unsupported component: ${interaction.customId}`);
+        logger.info('discord.interaction_completed', {
+          correlationId: request.correlationId,
+          command: payload.data?.name ?? 'component',
+          mode: 'deferred',
+          acknowledgementMs: processingStartedAt - receivedAt,
+          contextDurationMs,
+          durationMs: Date.now() - receivedAt,
+        });
+      } catch (error) {
+        logger.error('discord.interaction_failed', {
+          correlationId: request.correlationId,
+          command: payload.data?.name,
+          durationMs: Date.now() - receivedAt,
+          error,
+        });
+        try {
+          await restClient.editInteractionReply(payload.application_id, payload.token, {
+            content: 'Leone encountered an error while processing this interaction.',
+            flags: MessageFlags.Ephemeral,
+            allowed_mentions: { parse: [] },
+          });
+        } catch (responseError) {
+          logger.error('discord.interaction_error_response_failed', { correlationId: request.correlationId, error: responseError });
+        }
+      }
+    });
+
+    try {
+      registerBackgroundTask(backgroundTask);
+    } catch (error) {
+      // Local Express development has no Vercel request context. The already
+      // started promise remains attached to the Node.js event loop there.
+      logger.debug('discord.interaction_background_registration_skipped', {
+        correlationId: request.correlationId,
+        error,
+      });
+    }
+
     response.json(isButton
       ? { type: InteractionResponseType.DEFERRED_UPDATE_MESSAGE }
       : { type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE, data: ephemeral ? { flags: MessageFlags.Ephemeral } : {} });
-
-    try {
-      const interaction = await createHttpInteraction({ payload, response, restClient, preDeferred: true });
-      if (isCommand) await executeCommand(interaction);
-      else if (!(await executeComponent(interaction))) throw new Error(`Unsupported component: ${interaction.customId}`);
-      logger.info('discord.interaction_completed', { correlationId: request.correlationId, command: payload.data?.name ?? 'component' });
-    } catch (error) {
-      logger.error('discord.interaction_failed', { correlationId: request.correlationId, command: payload.data?.name, error });
-      try {
-        await restClient.editInteractionReply(payload.application_id, payload.token, {
-          content: 'Leone encountered an error while processing this interaction.',
-          flags: MessageFlags.Ephemeral,
-          allowed_mentions: { parse: [] },
-        });
-      } catch (responseError) {
-        logger.error('discord.interaction_error_response_failed', { correlationId: request.correlationId, error: responseError });
-      }
-    }
   });
 
   app.use(express.json({ limit: '256kb' }));
@@ -167,3 +224,4 @@ function createApp(overrides = {}) {
 module.exports = createApp();
 module.exports.createApp = createApp;
 module.exports.safeEqual = safeEqual;
+module.exports.waitForResponseFinish = waitForResponseFinish;
