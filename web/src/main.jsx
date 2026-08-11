@@ -130,26 +130,79 @@ function Greetings() {
   const [revision, setRevision] = useState(0);
   const state = useLoad(() => Promise.all([api('/admin/config'), api('/admin/greetings/schedules'), api('/admin/greetings/runs'), api('/admin/greetings/templates')]), [revision]);
   const [preview, setPreview] = useState('');
-  const [form, setForm] = useState({ occasion: 'morning', roleId: '', channelId: '', name: 'Daily greeting', localTime: '07:00', timezone: 'Asia/Jakarta', daysOfWeek: [1,2,3,4,5,6,7], locationLabel: '' });
+  const [previewLabel, setPreviewLabel] = useState('Preview — no role notified');
+  const [editingScheduleId, setEditingScheduleId] = useState(null);
+  const [form, setForm] = useState({ occasion: 'morning', roleId: '', channelId: '', name: 'Daily greeting', localTime: '07:00', timezone: 'Asia/Jakarta', daysOfWeek: [1,2,3,4,5,6,7], adm4: '', locationLabel: '', graceMinutes: 15 });
   const [notice, setNotice] = useState('');
   if (state.loading || state.error) return <Status state={state} />;
   const [config, schedules, runs, templates] = state.data;
-  const update = (name) => (event) => setForm({ ...form, [name]: event.target.value });
+  const update = (name) => (event) => setForm((current) => ({ ...current, [name]: event.target.value }));
+  const updateDays = (event) => setForm((current) => ({
+    ...current,
+    daysOfWeek: event.target.value.split(',').map((item) => Number(item.trim())).filter((item) => Number.isInteger(item) && item >= 1 && item <= 7),
+  }));
+  const formPayload = {
+    ...form,
+    adm4: form.adm4 || null,
+    locationLabel: form.locationLabel || null,
+    graceMinutes: Number(form.graceMinutes),
+  };
+  function scheduleToForm(schedule) {
+    return {
+      name: schedule.name,
+      occasion: schedule.occasion,
+      roleId: schedule.role_id,
+      channelId: schedule.channel_id,
+      localTime: String(schedule.local_time).slice(0, 5),
+      timezone: schedule.timezone,
+      daysOfWeek: schedule.days_of_week,
+      adm4: schedule.adm4 ?? '',
+      locationLabel: schedule.location_label ?? '',
+      graceMinutes: schedule.grace_minutes,
+    };
+  }
+  function editSchedule(schedule) {
+    setEditingScheduleId(schedule.id);
+    setForm(scheduleToForm(schedule));
+    setPreview('');
+    setPreviewLabel(`Preview — ${schedule.name} (no role notified)`);
+    setNotice(`Editing ${schedule.name}. Saving changes will preserve its current enabled state.`);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  function cancelEdit() {
+    setEditingScheduleId(null);
+    setForm({ occasion: 'morning', roleId: '', channelId: '', name: 'Daily greeting', localTime: '07:00', timezone: 'Asia/Jakarta', daysOfWeek: [1,2,3,4,5,6,7], adm4: '', locationLabel: '', graceMinutes: 15 });
+    setPreview('');
+    setPreviewLabel('Preview — no role notified');
+    setNotice('Schedule edit cancelled.');
+  }
   async function previewGreeting() {
-    const result = await api('/admin/greetings/preview', { method: 'POST', body: JSON.stringify(form) });
+    const result = await api('/admin/greetings/preview', { method: 'POST', body: JSON.stringify(formPayload) });
     setPreview(result.content);
+    setPreviewLabel(editingScheduleId ? `Preview — ${form.name} (no role notified)` : 'Preview — no role notified');
   }
   async function createSchedule() {
-    await api('/admin/greetings/schedules', { method: 'POST', body: JSON.stringify({ ...form, graceMinutes: 15 }) });
-    setNotice('Schedule created disabled. Review it before enabling.');
+    if (editingScheduleId) {
+      await api(`/admin/greetings/schedules/${editingScheduleId}`, { method: 'PATCH', body: JSON.stringify(formPayload) });
+      setNotice(`Schedule ${form.name} updated.`);
+      setEditingScheduleId(null);
+    } else {
+      await api('/admin/greetings/schedules', { method: 'POST', body: JSON.stringify(formPayload) });
+      setNotice('Schedule created disabled. Review it before enabling.');
+    }
     setRevision((value) => value + 1);
+  }
+  async function previewSchedule(schedule) {
+    const result = await api(`/admin/greetings/schedules/${schedule.id}/preview`, { method: 'POST', body: JSON.stringify({}) });
+    setPreview(result.content);
+    setPreviewLabel(`Preview — ${result.schedule.name} (${result.schedule.enabled ? 'active' : 'disabled'}; no role notified)`);
   }
   async function sendGreeting() {
     if (!preview) return setNotice('Preview the exact message before sending it.');
     const channel = config.discordOptions.channels.find((item) => item.id === form.channelId);
     const role = config.discordOptions.roles.find((item) => item.id === form.roleId);
     if (!window.confirm(`Send this greeting to #${channel?.name ?? form.channelId} and notify @${role?.name ?? form.roleId}?`)) return;
-    const result = await api('/admin/greetings/send', { method: 'POST', body: JSON.stringify({ ...form, confirm: true }) });
+    const result = await api('/admin/greetings/send', { method: 'POST', body: JSON.stringify({ ...formPayload, confirm: true }) });
     setNotice(`Greeting sent and audited${result.url ? `: ${result.url}` : '.'}`);
     setRevision((value) => value + 1);
   }
@@ -174,12 +227,15 @@ function Greetings() {
       <label>Schedule name<input value={form.name} onChange={update('name')} /></label>
       <label>Local time<input type="time" value={form.localTime} onChange={update('localTime')} /></label>
       <label>Timezone<input value={form.timezone} onChange={update('timezone')} /></label>
+      <label>Days (ISO 1=Mon ... 7=Sun)<input value={form.daysOfWeek.join(',')} onChange={updateDays} /></label>
+      <label>BMKG village code<input value={form.adm4} onChange={update('adm4')} placeholder="Optional" /></label>
       <label>Location label<input value={form.locationLabel} onChange={update('locationLabel')} /></label>
+      <label>Grace period (minutes)<input type="number" min="0" max="120" value={form.graceMinutes} onChange={update('graceMinutes')} /></label>
     </div>
-    <div className="actions"><button onClick={previewGreeting} disabled={!form.roleId}>Private preview</button><button className="secondary" onClick={sendGreeting} disabled={!form.roleId || !form.channelId || !preview}>Send greeting now</button><button className="secondary" onClick={createSchedule} disabled={!form.roleId || !form.channelId}>Create disabled schedule</button></div>
-    {preview && <Panel title="Preview — no role notified"><pre className="preview">{preview}</pre></Panel>}
+    <div className="actions"><button onClick={previewGreeting} disabled={!form.roleId}>Private preview</button><button className="secondary" onClick={sendGreeting} disabled={!form.roleId || !form.channelId || !preview}>Send greeting now</button><button className="secondary" onClick={createSchedule} disabled={!form.roleId || !form.channelId || !form.daysOfWeek.length}>{editingScheduleId ? 'Save schedule changes' : 'Create disabled schedule'}</button>{editingScheduleId && <button className="secondary" onClick={cancelEdit}>Cancel edit</button>}</div>
+    {preview && <Panel title={previewLabel}><pre className="preview">{preview}</pre></Panel>}
     <Panel title="Templates"><DataTable rows={templates} columns={['name','occasion','version','enabled']} /></Panel>
-    <Panel title="Schedules">{schedules.length ? <div className="schedule-list">{schedules.map((schedule) => <article key={schedule.id} className="schedule-item"><div><strong>{schedule.name}</strong><span>{schedule.occasion} · {schedule.local_time} {schedule.timezone} · {schedule.enabled ? 'enabled' : 'disabled'}</span></div><div className="actions"><button className="secondary" onClick={() => setScheduleEnabled(schedule, !schedule.enabled)}>{schedule.enabled ? 'Disable' : 'Enable'}</button><button className="danger" onClick={() => deleteSchedule(schedule)}>Delete</button></div></article>)}</div> : <div className="empty">No schedules yet.</div>}</Panel>
+    <Panel title="Schedules">{schedules.length ? <div className="schedule-list">{schedules.map((schedule) => <article key={schedule.id} className="schedule-item"><div><strong>{schedule.name}</strong><span>{schedule.occasion} · {String(schedule.local_time).slice(0, 5)} {schedule.timezone} · days {schedule.days_of_week.join(',')} · {schedule.enabled ? 'enabled' : 'disabled'}</span></div><div className="actions"><button className="secondary" onClick={() => previewSchedule(schedule)}>Preview</button><button className="secondary" onClick={() => editSchedule(schedule)}>Edit</button><button className="secondary" onClick={() => setScheduleEnabled(schedule, !schedule.enabled)}>{schedule.enabled ? 'Disable' : 'Enable'}</button><button className="danger" onClick={() => deleteSchedule(schedule)}>Delete</button></div></article>)}</div> : <div className="empty">No schedules yet.</div>}</Panel>
     <Panel title="Run history"><DataTable rows={runs} columns={['schedule_name','status','scheduled_for','error_code']} /></Panel>
   </section>;
 }

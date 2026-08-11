@@ -75,6 +75,7 @@ class GreetingRepository {
 
   async updateSchedule({ guildId, identifier, changes }) {
     const allowed = {
+      name: 'name',
       channelId: 'channel_id',
       roleId: 'role_id',
       occasion: 'occasion',

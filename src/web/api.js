@@ -218,6 +218,24 @@ function createApiRouter({
   }));
 
   router.get('/admin/greetings/schedules', requireCapability('greetings.manage'), asyncRoute(async (request, response) => response.json(await greetings.listSchedules(request.auth.guildId))));
+  router.post('/admin/greetings/schedules/:id/preview', requireCapability('greetings.manage'), csrf, asyncRoute(async (request, response) => {
+    const schedule = await greetings.findSchedule(request.auth.guildId, request.params.id);
+    if (!schedule) return response.status(404).json({ error: 'SCHEDULE_NOT_FOUND' });
+
+    let weather = null;
+    if (schedule.adm4) {
+      try { weather = await bmkgClient.getForecast(schedule.adm4); } catch {}
+    }
+    response.json({
+      schedule: { id: schedule.id, name: schedule.name, enabled: schedule.enabled },
+      content: buildGreetingMessage({
+        occasion: schedule.occasion,
+        roleMention: `<@&${schedule.role_id}>`,
+        weather,
+        locationLabel: schedule.location_label,
+      }),
+    });
+  }));
   router.post('/admin/greetings/schedules', requireCapability('greetings.manage'), csrf, asyncRoute(async (request, response) => {
     const input = scheduleSchema.parse(request.body);
     if (input.roleId === request.auth.guildId) throw new Error('The @everyone role is not allowed for Greetings.');
@@ -227,6 +245,7 @@ function createApiRouter({
   }));
   router.patch('/admin/greetings/schedules/:id', requireCapability('greetings.manage'), csrf, asyncRoute(async (request, response) => {
     const input = scheduleSchema.partial().extend({ enabled: z.boolean().optional() }).parse(request.body);
+    if (input.roleId === request.auth.guildId) throw new Error('The @everyone role is not allowed for Greetings.');
     let schedule = await greetings.updateSchedule({ guildId: request.auth.guildId, identifier: request.params.id, changes: input });
     if (input.enabled !== undefined) schedule = await greetings.setScheduleEnabled({ guildId: request.auth.guildId, identifier: request.params.id, enabled: input.enabled });
     if (!schedule) return response.status(404).json({ error: 'SCHEDULE_NOT_FOUND' });
