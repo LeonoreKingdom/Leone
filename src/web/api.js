@@ -139,7 +139,7 @@ function createApiRouter({
 
   router.get('/admin/config', requireCapability('admin.read'), asyncRoute(async (request, response) => {
     const [guildResult, mappingResult, bundle] = await Promise.all([
-      pool.query('select scheduler_enabled, maintenance_mode, settings from guilds where id = $1', [request.auth.guildId]),
+      pool.query('select scheduler_enabled, settings from guilds where id = $1', [request.auth.guildId]),
       pool.query('select role_id, capability from guild_capability_roles where guild_id = $1 order by capability, role_id', [request.auth.guildId]),
       restClient.getGuildBundle(request.auth.guildId, { refresh: true }),
     ]);
@@ -156,7 +156,6 @@ function createApiRouter({
   router.patch('/admin/config', requireCapability('config.write'), csrf, asyncRoute(async (request, response) => {
     const schema = z.object({
       schedulerEnabled: z.boolean().optional(),
-      maintenanceMode: z.boolean().optional(),
       settings: z.record(z.string(), z.unknown()).optional(),
       capabilityRoles: z.array(z.object({
         roleId: snowflake,
@@ -169,9 +168,8 @@ function createApiRouter({
       await client.query('begin');
       await client.query(
         `update guilds set scheduler_enabled = coalesce($2, scheduler_enabled),
-          maintenance_mode = coalesce($3, maintenance_mode),
-          settings = coalesce($4::jsonb, settings), updated_at = now() where id = $1`,
-        [request.auth.guildId, input.schedulerEnabled, input.maintenanceMode, input.settings ? JSON.stringify(input.settings) : null],
+          settings = coalesce($3::jsonb, settings), updated_at = now() where id = $1`,
+        [request.auth.guildId, input.schedulerEnabled, input.settings ? JSON.stringify(input.settings) : null],
       );
       if (input.capabilityRoles) {
         await client.query('delete from guild_capability_roles where guild_id = $1', [request.auth.guildId]);

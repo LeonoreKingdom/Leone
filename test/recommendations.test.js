@@ -11,6 +11,9 @@ const {
   createTmdbClient,
   parseRetryAfter,
 } = require('../src/features/recommendations/tmdb-client');
+const {
+  safeMovies,
+} = require('../src/features/recommendations/movie.command');
 
 test('movie preferences map to safe TMDB Discover filters', () => {
   const query = buildDiscoverQuery(
@@ -141,6 +144,50 @@ test('TMDB client supports API key authentication', async () => {
   assert.equal(
     capturedUrl.searchParams.get('api_key'),
     'api-key',
+  );
+});
+
+test('TMDB client exposes movie browse, search, details, and trending endpoints', async () => {
+  const requests = [];
+  const client = createTmdbClient({
+    readAccessToken: 'read-token',
+    fetchImpl: async (url) => {
+      requests.push(url);
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ results: [] }),
+        headers: new Headers(),
+      };
+    },
+  });
+
+  await client.listMovies('popular', { page: 2 });
+  await client.searchMovies('spirited away', { language: 'en-US' });
+  await client.getMovieDetails(129, { language: 'en-US' });
+  await client.trendingMovies('day', { language: 'en-US' });
+
+  assert.deepEqual(
+    requests.map((url) => `${url.pathname}${url.search}`),
+    [
+      '/3/movie/popular?page=2',
+      '/3/search/movie?language=en-US&query=spirited+away&include_adult=false',
+      '/3/movie/129?language=en-US',
+      '/3/trending/movie/day?language=en-US',
+    ],
+  );
+});
+
+test('movie catalog results exclude adult and incomplete entries', () => {
+  assert.deepEqual(
+    safeMovies([
+      { id: 1, title: 'Safe', adult: false },
+      { id: 2, title: 'Adult', adult: true },
+      { id: 3, title: '', adult: false },
+      { id: 4, name: 'Localized safe title', adult: false },
+    ]).map((movie) => movie.id),
+    [1, 4],
   );
 });
 

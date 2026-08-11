@@ -2,6 +2,13 @@ const { setTimeout: delay } = require('node:timers/promises');
 
 const TMDB_API_BASE_URL = 'https://api.themoviedb.org/3';
 
+const MOVIE_LIST_PATHS = Object.freeze({
+  popular: '/movie/popular',
+  now_playing: '/movie/now_playing',
+  upcoming: '/movie/upcoming',
+  top_rated: '/movie/top_rated',
+});
+
 class TmdbError extends Error {
   constructor(message, options = {}) {
     super(message);
@@ -158,10 +165,47 @@ function createTmdbClient(options = {}) {
     discoverMovies(query) {
       return request('/discover/movie', query);
     },
+    listMovies(list = 'popular', query = {}) {
+      const path = MOVIE_LIST_PATHS[list];
+
+      if (!path) {
+        throw new TmdbError(`Unknown movie list: ${list}.`, {
+          code: 'INVALID_REQUEST',
+        });
+      }
+
+      return request(path, query);
+    },
+    searchMovies(query, options = {}) {
+      return request('/search/movie', {
+        ...options,
+        query,
+        include_adult: false,
+      });
+    },
+    getMovieDetails(movieId, query = {}) {
+      if (!/^\d+$/.test(String(movieId))) {
+        throw new TmdbError('Movie ID must be a positive integer.', {
+          code: 'INVALID_REQUEST',
+        });
+      }
+
+      return request(`/movie/${encodeURIComponent(String(movieId))}`, query);
+    },
+    trendingMovies(timeWindow = 'week', query = {}) {
+      if (!['day', 'week'].includes(timeWindow)) {
+        throw new TmdbError('Trending window must be day or week.', {
+          code: 'INVALID_REQUEST',
+        });
+      }
+
+      return request(`/trending/movie/${timeWindow}`, query);
+    },
   };
 }
 
 module.exports = {
+  MOVIE_LIST_PATHS,
   TMDB_API_BASE_URL,
   TmdbError,
   createTmdbClient,

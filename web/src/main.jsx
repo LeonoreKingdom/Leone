@@ -89,38 +89,105 @@ function Family({ me }) {
   </section>;
 }
 
+const capabilityOptions = [
+  { value: 'admin.read', label: 'Admin read — view dashboard' },
+  { value: 'config.write', label: 'Configuration write — edit settings' },
+  { value: 'greetings.manage', label: 'Greetings manage — send and schedule' },
+  { value: 'audit.read', label: 'Audit read — view audit log' },
+  { value: 'relationships.abuse', label: 'Relationships abuse — review reports' },
+];
+
+function capabilityLabel(value) {
+  return capabilityOptions.find((option) => option.value === value)?.label ?? value;
+}
+
+function groupCapabilityMappings(mappings, roles) {
+  const roleNames = new Map(roles.map((role) => [role.id, role.name]));
+  const grouped = new Map();
+  for (const mapping of mappings) {
+    const current = grouped.get(mapping.role_id) ?? {
+      roleId: mapping.role_id,
+      roleName: roleNames.get(mapping.role_id) ?? mapping.role_id,
+      capabilities: [],
+    };
+    if (!current.capabilities.includes(mapping.capability)) current.capabilities.push(mapping.capability);
+    grouped.set(mapping.role_id, current);
+  }
+  return [...grouped.values()].sort((left, right) => left.roleName.localeCompare(right.roleName));
+}
+
+function CapabilityTags({ capabilities }) {
+  if (!capabilities.length) return <span className="muted">No permissions selected</span>;
+  return <div className="tags">{capabilities.map((capability) => <span className="tag" key={capability}>{capabilityLabel(capability)}</span>)}</div>;
+}
+
+function CapabilityMappingTable({ mappings, roles }) {
+  const grouped = groupCapabilityMappings(mappings, roles);
+  if (!grouped.length) return <div className="empty">No role mappings configured.</div>;
+  return <div className="table-wrap"><table><thead><tr><th>Role</th><th>Capabilities</th><th>Permission count</th></tr></thead><tbody>{grouped.map((mapping) => <tr key={mapping.roleId}><td><code>@{mapping.roleName}</code></td><td><CapabilityTags capabilities={mapping.capabilities} /></td><td>{mapping.capabilities.length}</td></tr>)}</tbody></table></div>;
+}
+
 function Config({ canWrite }) {
   const state = useLoad(() => api('/admin/config'), []);
   const [notice, setNotice] = useState('');
-  const [mappingDraft, setMappingDraft] = useState('');
+  const [mappingDraft, setMappingDraft] = useState([]);
   useEffect(() => {
-    if (state.data) setMappingDraft(state.data.capabilityRoles.map((item) => `${item.role_id} ${item.capability}`).join('\n'));
+    if (!state.data) return;
+    const roles = state.data.discordOptions.roles;
+    setMappingDraft(groupCapabilityMappings(state.data.capabilityRoles, roles).map((item) => ({
+      roleId: item.roleId,
+      roleQuery: item.roleName,
+      capabilities: item.capabilities,
+    })));
   }, [state.data]);
-  async function toggle(name, value) {
-    await api('/admin/config', { method: 'PATCH', body: JSON.stringify({ [name]: value }) });
-    setNotice('Configuration updated. Refresh to confirm the live value.');
+  function updateMapping(index, changes) {
+    setMappingDraft((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...changes } : item));
+  }
+  function addMapping() {
+    setMappingDraft((current) => [...current, { roleId: '', roleQuery: '', capabilities: [] }]);
+  }
+  function removeMapping(index) {
+    setMappingDraft((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  }
+  async function toggleScheduler(value) {
+    await api('/admin/config', { method: 'PATCH', body: JSON.stringify({ schedulerEnabled: value }) });
+    setNotice('Scheduler configuration updated.');
   }
   async function saveMappings() {
-    const capabilityRoles = mappingDraft.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
-      const [roleId, capability] = line.split(/\s+/);
-      return { roleId, capability };
-    });
+    if (mappingDraft.some((item) => !item.roleId || !item.capabilities.length)) {
+      setNotice('Select a valid Discord role and at least one permission for every mapping.');
+      return;
+    }
+    const capabilityRoles = mappingDraft.flatMap(({ roleId, capabilities }) => capabilities.map((capability) => ({ roleId, capability })));
     await api('/admin/config', { method: 'PATCH', body: JSON.stringify({ capabilityRoles }) });
     setNotice('Capability mappings updated and audited.');
   }
   if (state.loading || state.error) return <Status state={state} />;
+  const roles = state.data.discordOptions.roles;
+  const groupedMappings = groupCapabilityMappings(state.data.capabilityRoles, roles);
   return <section><header><p className="eyebrow">Live Discord IDs</p><h1>Configuration</h1></header>
     {notice && <div className="notice">{notice}</div>}
     <div className="cards">
-      <article className="card"><span>Scheduler</span><strong>{String(state.data.scheduler_enabled)}</strong>{canWrite && <button onClick={() => toggle('schedulerEnabled', !state.data.scheduler_enabled)}>Toggle</button>}</article>
-      <article className="card"><span>Maintenance</span><strong>{String(state.data.maintenance_mode)}</strong>{canWrite && <button onClick={() => toggle('maintenanceMode', !state.data.maintenance_mode)}>Toggle</button>}</article>
-      <article className="card"><span>Capability mappings</span><strong>{state.data.capabilityRoles.length}</strong><small>role ID grants</small></article>
+      <article className="card"><span>Scheduler</span><strong>{String(state.data.scheduler_enabled)}</strong>{canWrite && <button onClick={() => toggleScheduler(!state.data.scheduler_enabled)}>Toggle</button>}</article>
+      <article className="card"><span>Capability mappings</span><strong>{groupedMappings.length}</strong><small>roles with grants</small></article>
     </div>
-    <Panel title="Role capability mappings"><DataTable rows={state.data.capabilityRoles} columns={['role_id', 'capability']} /></Panel>
+    <Panel title="Role capability mappings"><CapabilityMappingTable mappings={state.data.capabilityRoles} roles={roles} /></Panel>
     {canWrite && <Panel title="Edit capability mappings">
-      <p>Use one immutable Discord role ID and capability per line. Saving replaces the complete mapping.</p>
-      <textarea value={mappingDraft} onChange={(event) => setMappingDraft(event.target.value)} rows="7" placeholder="123456789012345678 greetings.manage" />
-      <div className="actions"><button onClick={saveMappings}>Save complete mapping</button></div>
+      <p>Group permissions under one Discord role. Saving replaces the complete mapping.</p>
+      {mappingDraft.length === 0 && <div className="empty">No role mappings configured.</div>}
+      {mappingDraft.map((mapping, index) => <div className="mapping-row" key={`${mapping.roleId || 'new'}-${index}`}>
+        <div className="form-grid">
+        <label>Discord role<input list="config-role-options" value={mapping.roleQuery} onChange={(event) => {
+          const roleQuery = event.target.value;
+          const selectedRole = roles.find((role) => role.id === roleQuery || role.name.toLowerCase() === roleQuery.toLowerCase());
+          updateMapping(index, { roleQuery, roleId: selectedRole?.id ?? '' });
+        }} placeholder="Search Supreme Royalty, Admin, Mod…" /></label>
+        <div><span className="field-label">Permissions</span><details className="permission-picker"><summary>{mapping.capabilities.length ? `${mapping.capabilities.length} selected` : 'Select permissions'}</summary><div className="permission-menu">{capabilityOptions.map((option) => <label key={option.value}><input type="checkbox" checked={mapping.capabilities.includes(option.value)} onChange={() => updateMapping(index, { capabilities: mapping.capabilities.includes(option.value) ? mapping.capabilities.filter((value) => value !== option.value) : [...mapping.capabilities, option.value] })} />{option.label}</label>)}</div></details><CapabilityTags capabilities={mapping.capabilities} /></div>
+        <button className="danger" onClick={() => removeMapping(index)}>Remove</button>
+        </div>
+      </div>)}
+      <datalist id="config-role-options">{roles.map((role) => <option value={role.name} key={role.id}>{role.name}</option>)}</datalist>
+      <div className="actions"><button className="secondary" onClick={addMapping}>Add role mapping</button><button onClick={saveMappings}>Save complete mapping</button></div>
     </Panel>}
     <Panel title="Discord destinations"><p>{state.data.discordOptions.channels.length} text channels and {state.data.discordOptions.roles.length} roles are currently discoverable by Leone.</p></Panel>
   </section>;

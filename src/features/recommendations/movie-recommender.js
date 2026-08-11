@@ -196,6 +196,12 @@ function selectMovies(results, preferences, limit = 3) {
 }
 
 function getMovieGenreLabels(movie) {
+  if (Array.isArray(movie.genres)) {
+    return movie.genres
+      .map((genre) => genre?.name)
+      .filter(Boolean);
+  }
+
   return (movie.genre_ids ?? [])
     .map((id) => GENRES_BY_ID.get(id))
     .filter(Boolean);

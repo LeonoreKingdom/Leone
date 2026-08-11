@@ -23,6 +23,14 @@ const areas = {
       'Personalized movie, game, and media discoveries.',
     order: 30,
   },
+  movies: {
+    id: 'movies',
+    label: 'Movies',
+    emoji: '\u{1F3AC}',
+    description:
+      'Browse, search, inspect, and discover movies from TMDB.',
+    order: 35,
+  },
   automation: {
     id: 'automation',
     label: 'Automation',

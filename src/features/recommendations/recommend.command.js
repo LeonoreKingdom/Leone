@@ -143,10 +143,20 @@ function truncate(text, maximumLength) {
     .trimEnd()}…`;
 }
 
-function createMovieEmbed(movie, index, preferences) {
+function createMovieEmbed(
+  movie,
+  index,
+  preferences,
+  options = {},
+) {
   const genres = getMovieGenreLabels(movie);
-  const releaseYear = movie.release_date.slice(0, 4);
+  const releaseDate = movie.release_date ?? '';
+  const releaseYear = releaseDate.slice(0, 4) || 'TBA';
   const movieUrl = `${TMDB_URL}/movie/${movie.id}`;
+  const title = movie.title ?? movie.name ?? 'Untitled movie';
+  const numberedTitle = options.numbered === false
+    ? `${title} (${releaseYear})`
+    : `${index + 1}. ${title} (${releaseYear})`;
   const embed = new EmbedBuilder()
     .setColor(KINGDOM_COLOR)
     .setAuthor({
@@ -154,11 +164,11 @@ function createMovieEmbed(movie, index, preferences) {
       iconURL: TMDB_LOGO_URL,
       url: TMDB_URL,
     })
-    .setTitle(
-      `${index + 1}. ${movie.title} (${releaseYear})`,
-    )
+    .setTitle(numberedTitle)
     .setURL(movieUrl)
-    .setDescription(truncate(movie.overview, 900))
+    .setDescription(
+      truncate(movie.overview, options.descriptionLimit ?? 900),
+    )
     .addFields(
       {
         name: 'Why Leone chose it',

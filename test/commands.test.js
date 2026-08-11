@@ -172,6 +172,7 @@ test('registry contains unique commands with valid help metadata', () => {
     'server',
     'bonds',
     'recommend',
+    'movie',
     'greetings',
   ]);
   assert.equal(new Set(names).size, names.length);
@@ -202,6 +203,7 @@ test('help is generated from registered command metadata', async () => {
   assert.match(allAreasText, /Kingdom/);
   assert.match(allAreasText, /Relationships/);
   assert.match(allAreasText, /Recommendations/);
+  assert.match(allAreasText, /Movies/);
   assert.match(allAreasText, /Utilities/);
   assert.match(allAreasText, /server-map/);
   assert.doesNotMatch(allAreasText, /Automation/);
