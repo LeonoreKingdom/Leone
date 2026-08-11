@@ -4,6 +4,7 @@ import { Background, Controls, MiniMap, ReactFlow } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import './styles.css';
 import { api } from './api';
+import leoneLogo from '../../leone.png';
 
 const nav = [
   ['overview', 'Overview', 'admin.read'],
@@ -260,8 +261,8 @@ function App() {
   const meState = useLoad(() => api('/me'), []);
   const initial = location.pathname.startsWith('/family') ? 'family' : location.pathname.split('/')[2] || 'overview';
   const [page, setPage] = useState(initial);
-  if (meState.loading) return <main className="login"><div className="crest">L</div><h1>Leone</h1><p>Verifying your place in the Kingdom…</p></main>;
-  if (meState.error?.status === 401) return <main className="login"><div className="crest">L</div><p className="eyebrow">Leonore's Kingdom</p><h1>Welcome to Leone</h1><p>Sign in with Discord to access your permitted family tree and administration tools.</p><a className="button" href="/auth/discord">Continue with Discord</a></main>;
+  if (meState.loading) return <main className="login"><img className="crest-logo" src={leoneLogo} alt="Leone" /><h1>Leone</h1><p>Verifying your place in the Kingdom…</p></main>;
+  if (meState.error?.status === 401) return <main className="login"><img className="crest-logo" src={leoneLogo} alt="Leone" /><p className="eyebrow">Leonore's Kingdom</p><h1>Welcome to Leone</h1><p>Sign in with Discord to access your permitted family tree and administration tools.</p><a className="button" href="/auth/discord">Continue with Discord</a></main>;
   if (meState.error) return <main className="login"><div className="error">{meState.error.message}</div></main>;
   const me = meState.data;
   async function logout() {
@@ -270,7 +271,7 @@ function App() {
   }
   const allowed = (capability) => !capability || me.capabilities.includes(capability);
   const pages = { overview: <Overview />, family: <Family me={me} />, config: <Config canWrite={allowed('config.write')} />, greetings: <Greetings />, audit: <Audit />, operations: <Operations /> };
-  return <div className="shell"><aside><div className="brand"><div className="crest small">L</div><div><strong>Leone</strong><span>Royal companion</span></div></div><nav>{nav.filter((item) => allowed(item[2])).map(([key,label]) => <button key={key} className={page === key ? 'active' : ''} onClick={() => { setPage(key); history.replaceState(null, '', key === 'family' ? `/family/${me.user.id}` : `/admin/${key}`); }}>{label}</button>)}</nav><div className="identity"><strong>{me.user.displayName}</strong><span>{me.owner ? 'Guild owner' : 'Kingdom member'}</span><button className="secondary logout" onClick={logout}>Sign out</button></div></aside><main>{pages[page] ?? pages.overview}</main></div>;
+  return <div className="shell"><aside><div className="brand"><img className="crest-logo small" src={leoneLogo} alt="Leone" /><div><strong>Leone</strong><span>Royal companion</span></div></div><nav>{nav.filter((item) => allowed(item[2])).map(([key,label]) => <button key={key} className={page === key ? 'active' : ''} onClick={() => { setPage(key); history.replaceState(null, '', key === 'family' ? `/family/${me.user.id}` : `/admin/${key}`); }}>{label}</button>)}</nav><div className="identity"><strong>{me.user.displayName}</strong><span>{me.owner ? 'Guild owner' : 'Kingdom member'}</span><button className="secondary logout" onClick={logout}>Sign out</button></div></aside><main>{pages[page] ?? pages.overview}</main></div>;
 }
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><App /></React.StrictMode>);

@@ -9,7 +9,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .shell { min-height: 100vh; display: grid; grid-template-columns: 250px 1fr; }
 aside { position: sticky; top: 0; height: 100vh; padding: 1.5rem 1rem; border-right: 1px solid #243657; background: rgba(5, 12, 25, .88); backdrop-filter: blur(14px); display: flex; flex-direction: column; }
 .brand { display: flex; gap: .8rem; align-items: center; margin: 0 .5rem 2rem; }.brand strong,.brand span { display:block }.brand span,.identity span { color:#8190aa;font-size:.78rem }
-.crest { width: 74px; height: 74px; border: 2px solid #e7c47a; color: #e7c47a; display: grid; place-items: center; border-radius: 50% 50% 46% 46%; font: 700 2.5rem Georgia,serif; box-shadow: 0 0 40px rgba(231,196,122,.18); }.crest.small { width:42px;height:42px;font-size:1.4rem }
+.crest-logo { width: 74px; height: 74px; border: 2px solid #e7c47a; display: block; object-fit: cover; object-position: center 32%; border-radius: 50%; background: #050b15; box-shadow: 0 0 40px rgba(231,196,122,.18); }.crest-logo.small { width:42px;height:42px }
 nav { display:grid; gap:.35rem } nav button { text-align:left;background:transparent;color:#aebbd1;font-weight:600 } nav button:hover,nav button.active { background:#152744;color:#fff }
 .identity { margin-top:auto;padding:1rem .6rem;border-top:1px solid #243657 }.identity strong,.identity span{display:block}.identity .logout{margin-top:.8rem;width:100%}
 main { padding: clamp(1.25rem, 4vw, 3.5rem); max-width: 1500px; width:100%; }
