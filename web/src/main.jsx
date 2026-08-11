@@ -243,7 +243,7 @@ function Greetings() {
 function Audit() {
   const state = useLoad(() => api('/admin/audit'), []);
   if (state.loading || state.error) return <Status state={state} />;
-  return <section><header><p className="eyebrow">Append-only operational evidence</p><h1>Audit log</h1></header><Panel title="Recent events"><DataTable rows={state.data} columns={['created_at','actor_user_id','action','target_category','result']} formatters={{ created_at: formatAuditTimestamp, actor_user_id: formatAuditActor }} /></Panel></section>;
+  return <section><header><p className="eyebrow">Append-only operational evidence</p><h1>Audit log</h1></header><Panel title="Recent events"><DataTable rows={state.data} columns={['created_at','actor','action','target_category','result']} formatters={{ created_at: formatAuditTimestamp }} /></Panel></section>;
 }
 
 const auditTimestampFormatter = new Intl.DateTimeFormat('en-GB', {
@@ -262,10 +262,6 @@ function formatAuditTimestamp(value) {
   if (Number.isNaN(date.getTime())) return String(value ?? '—');
   const parts = Object.fromEntries(auditTimestampFormatter.formatToParts(date).map((part) => [part.type, part.value]));
   return `${parts.day} ${parts.month} ${parts.year} ${parts.hour}:${parts.minute}:${parts.second}`;
-}
-
-function formatAuditActor(value) {
-  return value ? `<@${value}>` : 'System';
 }
 
 function Panel({ title, children }) { return <article className="panel"><h2>{title}</h2>{children}</article>; }

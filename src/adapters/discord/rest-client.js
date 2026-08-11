@@ -38,6 +38,7 @@ class DiscordRestClient {
     this.applicationId = applicationId;
     this.rest = rest ?? new REST({ version: '10' }).setToken(token);
     this.guildCache = new Map();
+    this.userCache = new Map();
     this.botUser = null;
   }
 
@@ -74,7 +75,11 @@ class DiscordRestClient {
   }
 
   async getUser(userId) {
-    return this.rest.get(Routes.user(userId));
+    const cached = this.userCache.get(userId);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+    const value = await this.rest.get(Routes.user(userId));
+    this.userCache.set(userId, { value, expiresAt: Date.now() + 300_000 });
+    return value;
   }
 
   async sendChannelMessage(channelId, payload) {

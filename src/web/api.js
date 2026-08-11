@@ -259,7 +259,23 @@ function createApiRouter({
     response.status(204).end();
   }));
   router.get('/admin/greetings/runs', requireCapability('greetings.manage'), asyncRoute(async (request, response) => response.json(await greetings.listRuns(request.auth.guildId, Number(request.query.limit) || 100))));
-  router.get('/admin/audit', requireCapability('audit.read'), asyncRoute(async (request, response) => response.json(await audit.list({ guildId: request.auth.guildId, limit: Number(request.query.limit) || 100, before: request.query.before ?? null }))));
+  router.get('/admin/audit', requireCapability('audit.read'), asyncRoute(async (request, response) => {
+    const rows = await audit.list({ guildId: request.auth.guildId, limit: Number(request.query.limit) || 100, before: request.query.before ?? null });
+    const actorIds = [...new Set(rows.map((row) => row.actor_user_id).filter(Boolean))];
+    const actorLabels = new Map();
+    await Promise.all(actorIds.map(async (actorId) => {
+      try {
+        const user = await restClient.getUser(actorId);
+        actorLabels.set(actorId, `@${user.global_name ?? user.username}`);
+      } catch {
+        actorLabels.set(actorId, `<@${actorId}>`);
+      }
+    }));
+    response.json(rows.map((row) => ({
+      ...row,
+      actor: row.actor_user_id ? actorLabels.get(row.actor_user_id) : 'System',
+    })));
+  }));
 
   return router;
 }
