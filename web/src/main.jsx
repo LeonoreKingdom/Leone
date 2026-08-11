@@ -243,13 +243,36 @@ function Greetings() {
 function Audit() {
   const state = useLoad(() => api('/admin/audit'), []);
   if (state.loading || state.error) return <Status state={state} />;
-  return <section><header><p className="eyebrow">Append-only operational evidence</p><h1>Audit log</h1></header><Panel title="Recent events"><DataTable rows={state.data} columns={['created_at','actor_user_id','action','target_category','result']} /></Panel></section>;
+  return <section><header><p className="eyebrow">Append-only operational evidence</p><h1>Audit log</h1></header><Panel title="Recent events"><DataTable rows={state.data} columns={['created_at','actor_user_id','action','target_category','result']} formatters={{ created_at: formatAuditTimestamp, actor_user_id: formatAuditActor }} /></Panel></section>;
+}
+
+const auditTimestampFormatter = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Jakarta',
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+});
+
+function formatAuditTimestamp(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value ?? '—');
+  const parts = Object.fromEntries(auditTimestampFormatter.formatToParts(date).map((part) => [part.type, part.value]));
+  return `${parts.day} ${parts.month} ${parts.year} ${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
+function formatAuditActor(value) {
+  return value ? `<@${value}>` : 'System';
 }
 
 function Panel({ title, children }) { return <article className="panel"><h2>{title}</h2>{children}</article>; }
-function DataTable({ rows, columns }) {
+function DataTable({ rows, columns, formatters = {} }) {
   if (!rows?.length) return <div className="empty">No records yet.</div>;
-  return <div className="table-wrap"><table><thead><tr>{columns.map((key) => <th key={key}>{key.replaceAll('_',' ')}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={row.id ?? index}>{columns.map((key) => <td key={key}>{row[key] == null ? '—' : typeof row[key] === 'boolean' ? String(row[key]) : String(row[key]).slice(0, 120)}</td>)}</tr>)}</tbody></table></div>;
+  const formatCell = (key, value, row) => formatters[key] ? formatters[key](value, row) : value == null ? '—' : typeof value === 'boolean' ? String(value) : String(value).slice(0, 120);
+  return <div className="table-wrap"><table><thead><tr>{columns.map((key) => <th key={key}>{key.replaceAll('_',' ')}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={row.id ?? index}>{columns.map((key) => <td key={key}>{formatCell(key, row[key], row)}</td>)}</tr>)}</tbody></table></div>;
 }
 
 function App() {
