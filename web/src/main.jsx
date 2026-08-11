@@ -12,7 +12,6 @@ const nav = [
   ['config', 'Configuration', 'admin.read'],
   ['greetings', 'Greetings', 'greetings.manage'],
   ['audit', 'Audit Log', 'audit.read'],
-  ['operations', 'Operations', 'config.write'],
 ];
 
 function useLoad(loader, dependencies = []) {
@@ -247,10 +246,6 @@ function Audit() {
   return <section><header><p className="eyebrow">Append-only operational evidence</p><h1>Audit log</h1></header><Panel title="Recent events"><DataTable rows={state.data} columns={['created_at','actor_user_id','action','target_category','result']} /></Panel></section>;
 }
 
-function Operations() {
-  return <section><header><p className="eyebrow">Safe recovery controls</p><h1>Operations</h1></header><div className="warning"><strong>Emergency order:</strong> disable the database scheduler first, then set <code>GREETINGS_SCHEDULER_ENABLED=false</code> in Vercel. Promote the prior verified Vercel deployment for application rollback.</div><Panel title="Runbooks"><p>Use the deployment checklist for health probes, secret rotation, backups, interaction cutover, DNS changes, and restore rehearsal. No bot or database secrets are exposed in this dashboard.</p></Panel></section>;
-}
-
 function Panel({ title, children }) { return <article className="panel"><h2>{title}</h2>{children}</article>; }
 function DataTable({ rows, columns }) {
   if (!rows?.length) return <div className="empty">No records yet.</div>;
@@ -270,7 +265,7 @@ function App() {
     location.assign('/');
   }
   const allowed = (capability) => !capability || me.capabilities.includes(capability);
-  const pages = { overview: <Overview />, family: <Family me={me} />, config: <Config canWrite={allowed('config.write')} />, greetings: <Greetings />, audit: <Audit />, operations: <Operations /> };
+  const pages = { overview: <Overview />, family: <Family me={me} />, config: <Config canWrite={allowed('config.write')} />, greetings: <Greetings />, audit: <Audit /> };
   return <div className="shell"><aside><div className="brand"><img className="crest-logo small" src={leoneLogo} alt="Leone" /><div><strong>Leone</strong><span>Royal companion</span></div></div><nav>{nav.filter((item) => allowed(item[2])).map(([key,label]) => <button key={key} className={page === key ? 'active' : ''} onClick={() => { setPage(key); history.replaceState(null, '', key === 'family' ? `/family/${me.user.id}` : `/admin/${key}`); }}>{label}</button>)}</nav><div className="identity"><strong>{me.user.displayName}</strong><span>{me.owner ? 'Guild owner' : 'Kingdom member'}</span><button className="secondary logout" onClick={logout}>Sign out</button></div></aside><main>{pages[page] ?? pages.overview}</main></div>;
 }
 
