@@ -31,6 +31,14 @@ const areas = {
       'Browse, search, inspect, and discover movies from TMDB.',
     order: 35,
   },
+  anime: {
+    id: 'anime',
+    label: 'Anime',
+    emoji: '\u{1F38C}',
+    description:
+      'Browse, search, recommend, and explore anime seasons.',
+    order: 37,
+  },
   automation: {
     id: 'automation',
     label: 'Automation',
@@ -38,6 +46,14 @@ const areas = {
     description:
       'Staff-controlled greetings and community routines.',
     order: 40,
+  },
+  weather: {
+    id: 'weather',
+    label: 'Weather',
+    emoji: '\u{1F324}',
+    description:
+      'Live conditions and forecasts for places around the world.',
+    order: 50,
   },
   utility: {
     id: 'utility',

@@ -1,9 +1,11 @@
 const helpCommand = require('./help.command');
 const automationCommands = require('../features/automation');
+const animeCommands = require('../features/anime');
 const kingdomCommands = require('../features/kingdom');
 const recommendationCommands = require('../features/recommendations');
 const relationshipCommands = require('../features/relationships');
 const systemCommands = require('../features/system');
+const weatherCommands = require('../features/weather');
 const { areas } = require('./areas');
 
 const commandModules = [
@@ -12,7 +14,9 @@ const commandModules = [
   ...kingdomCommands,
   ...relationshipCommands,
   ...recommendationCommands,
+  ...animeCommands,
   ...automationCommands,
+  ...weatherCommands,
 ];
 const commandRegistry = new Map();
 

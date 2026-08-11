@@ -23,6 +23,10 @@ const {
   TmdbError,
   createTmdbClient,
 } = require('./tmdb-client');
+const {
+  configureAnimeSubcommand,
+  executeAnimeRecommendation,
+} = require('../anime/recommendanime.command');
 
 const genreChoices = Object.entries(GENRES).map(
   ([value, genre]) => ({
@@ -112,13 +116,14 @@ const data = new SlashCommandBuilder()
             'Show the recommendations only to you.',
           ),
       ),
-  );
+  )
+  .addSubcommand(configureAnimeSubcommand);
 
 const help = {
   area: 'recommendations',
-  usage: '/recommend movie [preferences]',
+  usage: '/recommend <movie|anime> [preferences]',
   summary:
-    'Discover three TMDB movies matched to your preferences.',
+    'Discover personalized movie or anime recommendations.',
   audience: 'everyone',
   order: 10,
 };
@@ -234,6 +239,7 @@ function getFriendlyError(error) {
  * @param {import('discord.js').ChatInputCommandInteraction} interaction
  */
 async function execute(interaction) {
+  const subcommand = interaction.options.getSubcommand();
   const isPrivate =
     interaction.options.getBoolean('private') ?? false;
 
@@ -243,6 +249,11 @@ async function execute(interaction) {
     });
   } else {
     await interaction.deferReply();
+  }
+
+  if (subcommand === 'anime') {
+    await executeAnimeRecommendation(interaction);
+    return;
   }
 
   const preferences = {

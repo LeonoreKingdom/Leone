@@ -173,11 +173,19 @@ test('registry contains unique commands with valid help metadata', () => {
     'bonds',
     'recommend',
     'movie',
+    'anime',
     'greetings',
+    'weather',
   ]);
   assert.equal(new Set(names).size, names.length);
   assert.equal(commandRegistry.size, names.length);
   assert.equal(commandModules.length, names.length);
+  const recommendPayload = payload.find((command) => command.name === 'recommend');
+  assert.deepEqual(
+    recommendPayload.options.map((option) => option.name),
+    ['movie', 'anime'],
+  );
+  assert.equal(names.includes('recommendanime'), false);
 
   for (const command of commandModules) {
     assert.ok(command.help.area);
@@ -204,6 +212,8 @@ test('help is generated from registered command metadata', async () => {
   assert.match(allAreasText, /Relationships/);
   assert.match(allAreasText, /Recommendations/);
   assert.match(allAreasText, /Movies/);
+  assert.match(allAreasText, /Anime/);
+  assert.match(allAreasText, /Weather/);
   assert.match(allAreasText, /Utilities/);
   assert.match(allAreasText, /server-map/);
   assert.doesNotMatch(allAreasText, /Automation/);
