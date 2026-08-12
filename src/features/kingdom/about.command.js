@@ -52,7 +52,7 @@ async function execute(interaction) {
         name: '🤖 Meet Leone',
         value: [
           "I'm the Kingdom's royal companion and guide.",
-          'I help members navigate the server, meet the staff, build social bonds, discover games and movies, join activities, and support community safety.',
+          'I help members navigate the server, meet the staff, build social bonds, discover movies and media, join activities, and support community safety.',
         ].join(' '),
       },
       {

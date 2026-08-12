@@ -9,6 +9,13 @@ const MOVIE_LIST_PATHS = Object.freeze({
   top_rated: '/movie/top_rated',
 });
 
+const TV_LIST_PATHS = Object.freeze({
+  popular: '/tv/popular',
+  airing_today: '/tv/airing_today',
+  on_the_air: '/tv/on_the_air',
+  top_rated: '/tv/top_rated',
+});
+
 class TmdbError extends Error {
   constructor(message, options = {}) {
     super(message);
@@ -201,11 +208,51 @@ function createTmdbClient(options = {}) {
 
       return request(`/trending/movie/${timeWindow}`, query);
     },
+    discoverTv(query = {}) {
+      return request('/discover/tv', query);
+    },
+    listTv(list = 'popular', query = {}) {
+      const path = TV_LIST_PATHS[list];
+
+      if (!path) {
+        throw new TmdbError(`Unknown TV list: ${list}.`, {
+          code: 'INVALID_REQUEST',
+        });
+      }
+
+      return request(path, query);
+    },
+    searchTv(query, options = {}) {
+      return request('/search/tv', {
+        ...options,
+        query,
+        include_adult: false,
+      });
+    },
+    getTvDetails(seriesId, query = {}) {
+      if (!/^\d+$/.test(String(seriesId))) {
+        throw new TmdbError('TV series ID must be a positive integer.', {
+          code: 'INVALID_REQUEST',
+        });
+      }
+
+      return request(`/tv/${encodeURIComponent(String(seriesId))}`, query);
+    },
+    trendingTv(timeWindow = 'week', query = {}) {
+      if (!['day', 'week'].includes(timeWindow)) {
+        throw new TmdbError('Trending window must be day or week.', {
+          code: 'INVALID_REQUEST',
+        });
+      }
+
+      return request(`/trending/tv/${timeWindow}`, query);
+    },
   };
 }
 
 module.exports = {
   MOVIE_LIST_PATHS,
+  TV_LIST_PATHS,
   TMDB_API_BASE_URL,
   TmdbError,
   createTmdbClient,

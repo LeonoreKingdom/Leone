@@ -19,7 +19,7 @@ always-on production availability or managed backups.
 | Production deployment | `dpl_4toHu9Kkt2qqHe7HWdTtRpZ9A3tw` | READY |
 | Supabase project | `Leone` / `buzixaugbqtcmiwpwuem` | Active, Free |
 | Supabase region | `ap-southeast-1` | Active |
-| Discord application | `Leone` / `1532088865035124946` | 10 guild commands registered |
+| Discord application | `Leone` / `1532088865035124946` | 10 guild commands registered at the last deployment; source now defines 18 |
 | Discord guild | `332544131693936642` | Seeded |
 | Interactions endpoint | `/api/discord/interactions` | Verified by Discord |
 | Scheduler | `GREETINGS_SCHEDULER_ENABLED=false` | Disabled by default |
@@ -38,7 +38,7 @@ npm.cmd run build
 git diff --check
 ```
 
-Expected baseline: 35 tests pass, Vite builds `public/`, and diff check has no
+Expected baseline: 51 tests pass, Vite builds `public/`, and diff check has no
 errors. Line-ending warnings on Windows are informational.
 
 Never deploy `.env`, `data/`, database dumps, or generated secret files. Keep the
@@ -203,8 +203,9 @@ Application `1532088865035124946`:
 npm.cmd run deploy:commands
 ```
 
-Expected commands: `ping`, `help`, `about`, `staff`, `server-map`, `rules`,
-`server`, `bonds`, `recommend`, and `greetings`.
+Expected commands include `ping`, `help`, `about`, `staff`, `server-map`,
+`rules`, `server`, `bonds`, `recommend`, `movie`, `anime`, `series`,
+`novel`, `manga`, `manhwa`, `manhua`, `greetings`, and `weather`.
 
 The Developer Portal, not the bot-token API, is the authoritative fallback for
 endpoint and redirect settings when Discord rejects application edits from bot

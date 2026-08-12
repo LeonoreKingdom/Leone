@@ -20,7 +20,7 @@ const areas = {
     label: 'Recommendations',
     emoji: '🎬',
     description:
-      'Personalized movie, game, and media discoveries.',
+      'Personalized movie, anime, series, and reading discoveries.',
     order: 30,
   },
   movies: {
@@ -39,13 +39,29 @@ const areas = {
       'Browse, search, recommend, and explore anime seasons.',
     order: 37,
   },
+  series: {
+    id: 'series',
+    label: 'Series',
+    emoji: '\u{1F4FA}',
+    description:
+      'Browse, search, recommend, and explore TV and streaming series.',
+    order: 38,
+  },
+  reading: {
+    id: 'reading',
+    label: 'Reading',
+    emoji: '\u{1F4DA}',
+    description:
+      'Explore novels, manga, manhwa, and manhua through AniList.',
+    order: 39,
+  },
   automation: {
     id: 'automation',
     label: 'Automation',
     emoji: '☀️',
     description:
       'Staff-controlled greetings and community routines.',
-    order: 40,
+    order: 45,
   },
   weather: {
     id: 'weather',

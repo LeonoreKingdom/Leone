@@ -42,6 +42,10 @@ The TMDB developer API is used only for non-commercial movie discovery.
 commercial product, obtain an appropriate TMDB commercial license before
 continuing to use TMDB data.
 
+AniList powers `/anime`, `/novel`, `/manga`, `/manhwa`, and `/manhua` public
+metadata searches without an application key. TMDB powers `/series` using the
+same credential as movie discovery.
+
 Deploy the updated Discord command after configuring the credential:
 
 ```powershell

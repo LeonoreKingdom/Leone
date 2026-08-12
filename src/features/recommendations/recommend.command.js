@@ -27,6 +27,17 @@ const {
   configureAnimeSubcommand,
   executeAnimeRecommendation,
 } = require('../anime/recommendanime.command');
+const {
+  configureSeriesRecommendationSubcommand,
+  executeSeriesRecommendation,
+  friendlySeriesError,
+} = require('../series/recommendation');
+const {
+  configureReadingRecommendationSubcommand,
+  executeReadingRecommendation,
+  friendlyReadingError,
+} = require('../reading/recommendation');
+const { READING_CONFIGS } = require('../reading/reading.command');
 
 const genreChoices = Object.entries(GENRES).map(
   ([value, genre]) => ({
@@ -117,13 +128,26 @@ const data = new SlashCommandBuilder()
           ),
       ),
   )
-  .addSubcommand(configureAnimeSubcommand);
+  .addSubcommand(configureAnimeSubcommand)
+  .addSubcommand(configureSeriesRecommendationSubcommand)
+  .addSubcommand((subcommand) =>
+    configureReadingRecommendationSubcommand(subcommand, READING_CONFIGS.novel),
+  )
+  .addSubcommand((subcommand) =>
+    configureReadingRecommendationSubcommand(subcommand, READING_CONFIGS.manga),
+  )
+  .addSubcommand((subcommand) =>
+    configureReadingRecommendationSubcommand(subcommand, READING_CONFIGS.manhwa),
+  )
+  .addSubcommand((subcommand) =>
+    configureReadingRecommendationSubcommand(subcommand, READING_CONFIGS.manhua),
+  );
 
 const help = {
   area: 'recommendations',
-  usage: '/recommend <movie|anime> [preferences]',
+  usage: '/recommend <movie|anime|series|novel|manga|manhwa|manhua> [preferences]',
   summary:
-    'Discover personalized movie or anime recommendations.',
+    'Discover personalized movies, anime, series, novels, manga, manhwa, and manhua.',
   audience: 'everyone',
   order: 10,
 };
@@ -253,6 +277,29 @@ async function execute(interaction) {
 
   if (subcommand === 'anime') {
     await executeAnimeRecommendation(interaction);
+    return;
+  }
+
+  if (subcommand === 'series') {
+    try {
+      await executeSeriesRecommendation(interaction);
+    } catch (error) {
+      const friendlyError = friendlySeriesError(error);
+      if (!friendlyError) throw error;
+      await interaction.editReply({ content: friendlyError });
+    }
+    return;
+  }
+
+  const readingConfig = READING_CONFIGS[subcommand];
+  if (readingConfig) {
+    try {
+      await executeReadingRecommendation(interaction, readingConfig);
+    } catch (error) {
+      const friendlyError = friendlyReadingError(error);
+      if (!friendlyError) throw error;
+      await interaction.editReply({ content: friendlyError });
+    }
     return;
   }
 

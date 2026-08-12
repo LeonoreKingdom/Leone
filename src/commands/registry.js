@@ -4,6 +4,8 @@ const animeCommands = require('../features/anime');
 const kingdomCommands = require('../features/kingdom');
 const recommendationCommands = require('../features/recommendations');
 const relationshipCommands = require('../features/relationships');
+const readingCommands = require('../features/reading');
+const seriesCommands = require('../features/series');
 const systemCommands = require('../features/system');
 const weatherCommands = require('../features/weather');
 const { areas } = require('./areas');
@@ -15,6 +17,8 @@ const commandModules = [
   ...relationshipCommands,
   ...recommendationCommands,
   ...animeCommands,
+  ...seriesCommands,
+  ...readingCommands,
   ...automationCommands,
   ...weatherCommands,
 ];
