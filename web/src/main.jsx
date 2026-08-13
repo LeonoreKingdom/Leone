@@ -11,6 +11,9 @@ const nav = [
   ['family', 'Family Tree', null],
   ['config', 'Configuration', 'admin.read'],
   ['greetings', 'Greetings', 'greetings.manage'],
+  ['moderation', 'Moderation', 'moderation.read'],
+  ['server-admin', 'Server Administration', 'server.roles.read'],
+  ['chatbot', 'Chatbot', 'chatbot.manage'],
   ['audit', 'Audit Log', 'audit.read'],
 ];
 
@@ -90,6 +93,18 @@ function Family({ me }) {
 }
 
 const capabilityOptions = [
+  { value: 'chatbot.manage', label: 'Chatbot manage — configure AI and knowledge' },
+  { value: 'moderation.read', label: 'Moderation read' },
+  { value: 'moderation.warn', label: 'Moderation warn' },
+  { value: 'moderation.timeout', label: 'Moderation timeout' },
+  { value: 'moderation.kick', label: 'Moderation kick' },
+  { value: 'moderation.ban', label: 'Moderation ban' },
+  { value: 'moderation.messages', label: 'Moderation messages' },
+  { value: 'server.roles.read', label: 'Server roles read' },
+  { value: 'server.roles.assign', label: 'Server roles assign' },
+  { value: 'server.roles.manage', label: 'Server roles manage' },
+  { value: 'server.channels.read', label: 'Server channels read' },
+  { value: 'server.channels.manage', label: 'Server channels manage' },
   { value: 'admin.read', label: 'Admin read — view dashboard' },
   { value: 'config.write', label: 'Configuration write — edit settings' },
   { value: 'greetings.manage', label: 'Greetings manage — send and schedule' },
@@ -307,6 +322,145 @@ function Greetings() {
   </section>;
 }
 
+function Moderation() {
+  const [revision, setRevision] = useState(0);
+  const state = useLoad(() => Promise.all([api('/admin/moderation/summary'), api('/admin/moderation/cases')]), [revision]);
+  const [form, setForm] = useState({ action: 'warn', targetUserId: '', reason: '', durationSeconds: 3600, deleteMessageSeconds: 0, channelId: '', messageCount: 10, sendDm: false });
+  const [memberQuery, setMemberQuery] = useState('');
+  const [members, setMembers] = useState([]);
+  const [notice, setNotice] = useState('');
+  if (state.loading || state.error) return <Status state={state} />;
+  const [summary, cases] = state.data;
+  const update = (name) => (event) => setForm((current) => ({ ...current, [name]: event.target.type === 'checkbox' ? event.target.checked : event.target.value }));
+  async function searchMembers() {
+    const result = await api(`/admin/moderation/members?query=${encodeURIComponent(memberQuery)}`);
+    setMembers(result);
+  }
+  async function execute() {
+    if (!form.targetUserId && form.action !== 'purge') return setNotice('Select a target member first.');
+    if (!form.reason.trim()) return setNotice('A reason is required.');
+    if (!window.confirm(`Confirm ${form.action} for ${form.targetUserId || 'the selected channel'}?`)) return;
+    await api('/admin/moderation/actions', { method: 'POST', body: JSON.stringify({ ...form, targetUserId: form.targetUserId || undefined, durationSeconds: Number(form.durationSeconds), deleteMessageSeconds: Number(form.deleteMessageSeconds), messageCount: Number(form.messageCount), channelId: form.channelId || undefined, confirm: true, clientRequestId: crypto.randomUUID() }) });
+    setNotice('Moderation action completed and audited.');
+    setRevision((value) => value + 1);
+  }
+  return <section><header><p className="eyebrow">Controlled, case-based administration</p><h1>Moderation</h1></header>
+    {notice && <div className="notice">{notice}</div>}
+    <div className="cards"><article className="card"><span>Leone role</span><strong>{summary.readiness.bot.roleName ?? 'Not found'}</strong><small>position {summary.readiness.bot.rolePosition ?? '—'}</small></article>{Object.entries(summary.readiness.permissions).map(([name, enabled]) => <article className="card" key={name}><span>{name}</span><strong className={enabled ? 'healthy' : 'danger'}>{enabled ? 'Ready' : 'Missing'}</strong></article>)}</div>
+    <Panel title="New moderation action"><div className="form-grid">
+      <label>Action<select value={form.action} onChange={update('action')}>{['warn','timeout','untimeout','kick','ban','unban','purge'].map((action) => <option key={action}>{action}</option>)}</select></label>
+      {form.action !== 'purge' && <label>Target user ID<input value={form.targetUserId} onChange={update('targetUserId')} placeholder="Discord user ID" /></label>}
+      <label>Reason<textarea rows="2" value={form.reason} onChange={update('reason')} maxLength="512" /></label>
+      {(form.action === 'timeout') && <label>Duration seconds<input type="number" min="1" max="2419200" value={form.durationSeconds} onChange={update('durationSeconds')} /></label>}
+      {(form.action === 'ban') && <label>Delete messages seconds<input type="number" min="0" max="604800" value={form.deleteMessageSeconds} onChange={update('deleteMessageSeconds')} /></label>}
+      {(form.action === 'purge') && <><label>Channel ID<input value={form.channelId} onChange={update('channelId')} /></label><label>Message count<input type="number" min="1" max="100" value={form.messageCount} onChange={update('messageCount')} /></label></>}
+      {form.action !== 'purge' && <label className="checkbox"><input type="checkbox" checked={form.sendDm} onChange={update('sendDm')} /> Send member DM</label>}
+    </div><div className="actions"><button onClick={execute}>Confirm and execute</button><input value={memberQuery} onChange={(event) => setMemberQuery(event.target.value)} placeholder="Search member" /><button className="secondary" onClick={searchMembers}>Search</button></div>{members.length > 0 && <div className="tags">{members.map((member) => <button className="tag" key={member.id} onClick={() => setForm((current) => ({ ...current, targetUserId: member.id }))}>{member.displayName} ({member.id})</button>)}</div>}</Panel>
+    <Panel title="Recent moderation cases"><DataTable rows={cases} columns={['case_number','created_at','action','target','actor','result','reason']} /></Panel>
+  </section>;
+}
+
+function Chatbot() {
+  const [revision, setRevision] = useState(0);
+  const state = useLoad(() => Promise.all([api('/admin/chatbot/settings'), api('/admin/chatbot/knowledge/status')]), [revision]);
+  const [form, setForm] = useState({ enabled: false, channelIds: [], triggerMode: 'mention_dm', retentionDays: 30, perUserCooldownSeconds: 15, dailyRequestLimit: 500, model: '' });
+  const [notice, setNotice] = useState('');
+  useEffect(() => {
+    if (!state.data) return;
+    const settings = state.data[0].settings;
+    setForm({ enabled: Boolean(settings.enabled), channelIds: settings.channelIds ?? [], triggerMode: settings.triggerMode ?? 'mention_dm', retentionDays: settings.retentionDays ?? 30, perUserCooldownSeconds: settings.perUserCooldownSeconds ?? 15, dailyRequestLimit: settings.dailyRequestLimit ?? 500, model: settings.model ?? '' });
+  }, [state.data]);
+  if (state.loading || state.error) return <Status state={state} />;
+  const [info, status] = state.data;
+  const update = (name) => (event) => setForm((current) => ({ ...current, [name]: event.target.type === 'checkbox' ? event.target.checked : event.target.value }));
+  function toggleChannel(channelId) { setForm((current) => ({ ...current, channelIds: current.channelIds.includes(channelId) ? current.channelIds.filter((id) => id !== channelId) : [...current.channelIds, channelId] })); }
+  async function save() { await api('/admin/chatbot/settings', { method: 'PATCH', body: JSON.stringify({ ...form, retentionDays: Number(form.retentionDays), perUserCooldownSeconds: Number(form.perUserCooldownSeconds), dailyRequestLimit: Number(form.dailyRequestLimit) }) }); setNotice('Chatbot settings saved and audited.'); setRevision((value) => value + 1); }
+  async function reindex() { await api('/admin/chatbot/knowledge/reindex', { method: 'POST', body: '{}' }); setNotice('Canonical server knowledge reindexed.'); setRevision((value) => value + 1); }
+  async function purge() { if (!window.confirm('Purge all message-derived chatbot knowledge? Canonical documents are kept.')) return; const result = await api('/admin/chatbot/knowledge/purge', { method: 'POST', body: '{}' }); setNotice(`Purged ${result.deleted} message-derived chunks.`); setRevision((value) => value + 1); }
+  return <section><header><p className="eyebrow">Mention and DM companion</p><h1>Chatbot</h1></header>{notice && <div className="notice">{notice}</div>}
+    <div className="cards"><article className="card"><span>Groq</span><strong className={info.readiness.groq ? 'healthy' : 'danger'}>{info.readiness.groq ? 'Ready' : 'Missing key'}</strong><small>server-side only</small></article><article className="card"><span>Gateway worker</span><strong className={info.readiness.gateway ? 'healthy' : 'danger'}>{info.readiness.gateway ? 'Configured' : 'Missing token'}</strong><small>{status.worker_last_seen ? `last seen ${new Date(status.worker_last_seen).toLocaleString()}` : 'not seen yet'}</small></article><article className="card"><span>Canonical chunks</span><strong>{status.canonical_chunks ?? 0}</strong><small>{status.documents ?? 0} documents</small></article><article className="card"><span>Message chunks</span><strong>{status.message_chunks ?? 0}</strong><small>retention governed</small></article></div>
+    <Panel title="Chatbot configuration"><div className="form-grid"><label className="checkbox"><input type="checkbox" checked={form.enabled} onChange={update('enabled')} /> Enable chatbot</label><label>Trigger mode<select value={form.triggerMode} onChange={update('triggerMode')}><option value="mention_dm">Mention and DM (recommended)</option><option value="auto_response">Auto-response (use strict limits)</option></select></label><label>Retention<select value={form.retentionDays} onChange={update('retentionDays')}><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option></select></label><label>Per-user cooldown (seconds)<input type="number" min="0" max="3600" value={form.perUserCooldownSeconds} onChange={update('perUserCooldownSeconds')} /></label><label>Daily request limit<input type="number" min="0" max="100000" value={form.dailyRequestLimit} onChange={update('dailyRequestLimit')} /></label><label>Groq model<input value={form.model} onChange={update('model')} placeholder="Account-available model" /></label></div><p className="muted">Only approved public channels are ingested. DMs are answered but never added to shared server knowledge.</p><div className="channel-picker"><span className="field-label">Approved public channels</span>{info.channels.map((channel) => <label className="checkbox" key={channel.id}><input type="checkbox" checked={form.channelIds.includes(channel.id)} onChange={() => toggleChannel(channel.id)} /> #{channel.name}</label>)}</div><div className="actions"><button onClick={save}>Save settings</button><button className="secondary" onClick={reindex}>Reindex canonical knowledge</button><button className="danger" onClick={purge}>Purge message knowledge</button></div></Panel>
+    <Panel title="Readiness and data policy"><ul className="relationship-list"><li>Trigger default: mention/DM only.</li><li>No historical backfill; ingestion starts after enablement.</li><li>AI replies are generated by Groq and may be incorrect.</li><li>No raw prompts or responses are stored; only usage metadata is retained.</li><li>Administrative and moderation actions remain deterministic slash/API flows.</li></ul></Panel>
+  </section>;
+}
+
+function ServerAdmin({ canConfig }) {
+  const [revision, setRevision] = useState(0);
+  const state = useLoad(() => Promise.all([api('/admin/server/roles'), api('/admin/server/channels')]), [revision]);
+  const [roleForm, setRoleForm] = useState({ action: 'assign', roleId: '', memberIds: '', reason: 'Server administration' });
+  const [memberQuery, setMemberQuery] = useState('');
+  const [memberResults, setMemberResults] = useState([]);
+  const [roleEdit, setRoleEdit] = useState({ roleId: '', name: '', color: 0, hoist: false, mentionable: false });
+  const [channelForm, setChannelForm] = useState({ type: 0, name: '', parentId: '', topic: '', reason: 'Server administration' });
+  const [channelEdit, setChannelEdit] = useState({ channelId: '', name: '', parentId: '', topic: '' });
+  const [archiveCategoryId, setArchiveCategoryId] = useState('');
+  const [logChannelId, setLogChannelId] = useState('');
+  const [notice, setNotice] = useState('');
+  useEffect(() => {
+    if (!state.data) return;
+    const settings = state.data[1].settings?.moderation ?? {};
+    setArchiveCategoryId(settings.archiveCategoryId ?? '');
+    setLogChannelId(settings.logChannelId ?? '');
+  }, [state.data]);
+  if (state.loading || state.error) return <Status state={state} />;
+  const [roles, channels] = state.data;
+  const roleList = roles.roles.filter((role) => role.id !== roles.bot?.roleId && role.name !== '@everyone');
+  const categoryList = channels.channels.filter((channel) => channel.type === 4);
+  const update = (setter, name) => (event) => setter((current) => ({ ...current, [name]: event.target.type === 'checkbox' ? event.target.checked : event.target.value }));
+  async function previewAndExecuteRole() {
+    const memberIds = roleForm.memberIds.split(',').map((id) => id.trim()).filter(Boolean);
+    const preview = await api('/admin/server/role-operations/preview', { method: 'POST', body: JSON.stringify({ action: roleForm.action, roleId: roleForm.roleId, memberIds }) });
+    const phrase = window.prompt(`Preview: ${preview.affectedCount} members will be changed. Type exactly ${preview.confirmationPhrase}`);
+    if (phrase !== preview.confirmationPhrase) return setNotice('Bulk operation cancelled.');
+    await api('/admin/server/role-operations', { method: 'POST', body: JSON.stringify({ ...roleForm, memberIds, confirmPhrase: phrase, clientRequestId: crypto.randomUUID() }) });
+    setNotice('Bulk role operation completed and audited.');
+    setRevision((value) => value + 1);
+  }
+  async function searchServerMembers() {
+    const result = await api(`/admin/server/members?query=${encodeURIComponent(memberQuery)}`);
+    setMemberResults(result);
+  }
+  function selectServerMember(member) {
+    setRoleForm((current) => ({ ...current, memberIds: [...new Set([...current.memberIds.split(',').map((id) => id.trim()).filter(Boolean), member.id])].join(',') }));
+  }
+  async function createRole() {
+    if (!window.confirm(`Create role ${roleEdit.name}?`)) return;
+    await api('/admin/server/roles', { method: 'POST', body: JSON.stringify({ ...roleEdit, color: Number(roleEdit.color), reason: 'Create role from Leone admin', confirm: true, clientRequestId: crypto.randomUUID() }) });
+    setNotice('Role created.'); setRevision((value) => value + 1);
+  }
+  async function saveRole() {
+    if (!roleEdit.roleId) return setNotice('Select a role to edit.');
+    await api(`/admin/server/roles/${roleEdit.roleId}`, { method: 'PATCH', body: JSON.stringify({ name: roleEdit.name, color: Number(roleEdit.color), hoist: roleEdit.hoist, mentionable: roleEdit.mentionable, reason: 'Edit role from Leone admin', confirm: true, clientRequestId: crypto.randomUUID() }) });
+    setNotice('Role metadata updated.'); setRevision((value) => value + 1);
+  }
+  async function createChannel() {
+    await api('/admin/server/channels', { method: 'POST', body: JSON.stringify({ ...channelForm, type: Number(channelForm.type), parentId: channelForm.parentId || null, reason: channelForm.reason, confirm: true, clientRequestId: crypto.randomUUID() }) });
+    setNotice('Channel created.'); setRevision((value) => value + 1);
+  }
+  async function saveChannel() {
+    if (!channelEdit.channelId) return setNotice('Select a channel to edit.');
+    await api(`/admin/server/channels/${channelEdit.channelId}`, { method: 'PATCH', body: JSON.stringify({ name: channelEdit.name, parentId: channelEdit.parentId || null, topic: channelEdit.topic || null, reason: 'Edit channel from Leone admin', confirm: true, clientRequestId: crypto.randomUUID() }) });
+    setNotice('Channel updated.'); setRevision((value) => value + 1);
+  }
+  async function archiveChannel(channel) {
+    if (!archiveCategoryId) return setNotice('Select an archive category first.');
+    if (!window.confirm(`Lock and move #${channel.name} to the archive category?`)) return;
+    await api(`/admin/server/channels/${channel.id}/archive`, { method: 'POST', body: JSON.stringify({ archiveCategoryId, reason: 'Archive channel from Leone admin', confirm: true, clientRequestId: crypto.randomUUID() }) });
+    setNotice(`Channel #${channel.name} archived.`); setRevision((value) => value + 1);
+  }
+  async function saveSettings() {
+    if (!canConfig) return;
+    await api('/admin/config', { method: 'PATCH', body: JSON.stringify({ settings: { moderation: { archiveCategoryId, logChannelId, discordLogEnabled: Boolean(logChannelId) } } }) });
+    setNotice('Moderation channel settings saved.');
+  }
+  return <section><header><p className="eyebrow">Roles, members, and channels</p><h1>Server administration</h1></header>{notice && <div className="notice">{notice}</div>}
+    <Panel title="Bulk member-role operation"><div className="form-grid"><label>Action<select value={roleForm.action} onChange={update(setRoleForm, 'action')}><option value="assign">Assign role</option><option value="remove">Remove role</option></select></label><label>Role<select value={roleForm.roleId} onChange={update(setRoleForm, 'roleId')}><option value="">Select manageable role</option>{roleList.filter((role) => !role.managed).map((role) => <option value={role.id} key={role.id}>{role.name}</option>)}</select></label><label>Member IDs (comma separated)<textarea rows="2" value={roleForm.memberIds} onChange={update(setRoleForm, 'memberIds')} placeholder="Search below or paste IDs, maximum 100" /></label><label>Reason<input value={roleForm.reason} onChange={update(setRoleForm, 'reason')} /></label></div><div className="actions"><input value={memberQuery} onChange={(event) => setMemberQuery(event.target.value)} placeholder="Search member" /><button className="secondary" onClick={searchServerMembers}>Search</button></div>{memberResults.length > 0 && <div className="tags">{memberResults.map((member) => <button className="tag" key={member.id} onClick={() => selectServerMember(member)}>{member.displayName} ({member.id})</button>)}</div>}<button onClick={previewAndExecuteRole} disabled={!roleForm.roleId || !roleForm.memberIds}>Preview and execute</button></Panel>
+    <Panel title="Role metadata"><div className="form-grid"><label>Existing role<select value={roleEdit.roleId} onChange={(event) => { const role = roleList.find((item) => item.id === event.target.value); setRoleEdit({ roleId: role?.id ?? '', name: role?.name ?? '', color: role?.color ?? 0, hoist: false, mentionable: false }); }}><option value="">Select role</option>{roleList.filter((role) => !role.managed).map((role) => <option value={role.id} key={role.id}>{role.name}</option>)}</select></label><label>Name<input value={roleEdit.name} onChange={update(setRoleEdit, 'name')} /></label><label>Color integer<input type="number" min="0" max="16777215" value={roleEdit.color} onChange={update(setRoleEdit, 'color')} /></label><label className="checkbox"><input type="checkbox" checked={roleEdit.hoist} onChange={update(setRoleEdit, 'hoist')} /> Hoist</label><label className="checkbox"><input type="checkbox" checked={roleEdit.mentionable} onChange={update(setRoleEdit, 'mentionable')} /> Mentionable</label></div><div className="actions"><button className="secondary" onClick={createRole} disabled={!roleEdit.name}>Create role</button><button onClick={saveRole} disabled={!roleEdit.roleId}>Save metadata</button></div><DataTable rows={roleList} columns={['name','position','managed']} /></Panel>
+    <Panel title="Channels"><div className="form-grid"><label>Type<select value={channelForm.type} onChange={update(setChannelForm, 'type')}><option value="0">Text</option><option value="5">Announcement</option><option value="15">Forum</option><option value="2">Voice</option><option value="13">Stage</option></select></label><label>Name<input value={channelForm.name} onChange={update(setChannelForm, 'name')} /></label><label>Parent category<select value={channelForm.parentId} onChange={update(setChannelForm, 'parentId')}><option value="">No category</option>{categoryList.map((channel) => <option value={channel.id} key={channel.id}>{channel.name}</option>)}</select></label><label>Topic<input value={channelForm.topic} onChange={update(setChannelForm, 'topic')} /></label></div><button onClick={createChannel} disabled={!channelForm.name}>Create channel</button><div className="mapping-row"><div className="form-grid"><label>Edit channel<select value={channelEdit.channelId} onChange={(event) => { const channel = channels.channels.find((item) => item.id === event.target.value); setChannelEdit({ channelId: channel?.id ?? '', name: channel?.name ?? '', parentId: channel?.parentId ?? '', topic: '' }); }}><option value="">Select channel</option>{channels.channels.filter((channel) => channel.type !== 4).map((channel) => <option value={channel.id} key={channel.id}>#{channel.name}</option>)}</select></label><label>Name<input value={channelEdit.name} onChange={update(setChannelEdit, 'name')} /></label><label>Parent category<select value={channelEdit.parentId} onChange={update(setChannelEdit, 'parentId')}><option value="">No category</option>{categoryList.map((channel) => <option value={channel.id} key={channel.id}>{channel.name}</option>)}</select></label><label>Topic<input value={channelEdit.topic} onChange={update(setChannelEdit, 'topic')} /></label></div><button onClick={saveChannel} disabled={!channelEdit.channelId}>Save channel</button></div><div className="table-wrap"><table><thead><tr><th>Channel</th><th>Type</th><th>Action</th></tr></thead><tbody>{channels.channels.filter((channel) => channel.type !== 4).map((channel) => <tr key={channel.id}><td>#{channel.name}</td><td>{channel.type}</td><td><button className="danger" onClick={() => archiveChannel(channel)}>Archive</button></td></tr>)}</tbody></table></div></Panel>
+    <Panel title="Administration destinations"><div className="form-grid"><label>Archive category<select value={archiveCategoryId} onChange={(event) => setArchiveCategoryId(event.target.value)}><option value="">Select category</option>{categoryList.map((channel) => <option value={channel.id} key={channel.id}>{channel.name}</option>)}</select></label><label>Moderation log channel<select value={logChannelId} onChange={(event) => setLogChannelId(event.target.value)}><option value="">Disabled</option>{channels.channels.filter((channel) => [0,5].includes(channel.type)).map((channel) => <option value={channel.id} key={channel.id}>#{channel.name}</option>)}</select></label></div>{canConfig && <button onClick={saveSettings}>Save destinations</button>}</Panel>
+  </section>;
+}
+
 function Audit() {
   const state = useLoad(() => api('/admin/audit'), []);
   if (state.loading || state.error) return <Status state={state} />;
@@ -351,7 +505,7 @@ function App() {
     location.assign('/');
   }
   const allowed = (capability) => !capability || me.capabilities.includes(capability);
-  const pages = { overview: <Overview />, family: <Family me={me} />, config: <Config canWrite={allowed('config.write')} />, greetings: <Greetings />, audit: <Audit /> };
+  const pages = { overview: <Overview />, family: <Family me={me} />, config: <Config canWrite={allowed('config.write')} />, greetings: <Greetings />, moderation: <Moderation />, 'server-admin': <ServerAdmin canConfig={allowed('config.write')} />, chatbot: <Chatbot />, audit: <Audit /> };
   return <div className="shell"><aside><div className="brand"><img className="crest-logo small" src={leoneLogo} alt="Leone" /><div><strong>Leone</strong><span>Royal companion</span></div></div><nav>{nav.filter((item) => allowed(item[2])).map(([key,label]) => <button key={key} className={page === key ? 'active' : ''} onClick={() => { setPage(key); history.replaceState(null, '', key === 'family' ? `/family/${me.user.id}` : `/admin/${key}`); }}>{label}</button>)}</nav><div className="identity"><strong>{me.user.displayName}</strong><span>{me.owner ? 'Guild owner' : 'Kingdom member'}</span><button className="secondary logout" onClick={logout}>Sign out</button></div></aside><main>{pages[page] ?? pages.overview}</main></div>;
 }
 

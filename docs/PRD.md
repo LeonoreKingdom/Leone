@@ -19,9 +19,9 @@ Evolve Leone from a local, single-process Discord bot into a small community pla
 2. **Web application:** Discord-authenticated member family trees and role-authorized administration.
 3. **Supabase PostgreSQL:** durable relationship, configuration, schedule, session, and audit data.
 
-The approved implementation direction is **React + Vite**, an **Express.js API**, and **Supabase PostgreSQL**, deployed free-first on **Vercel** with **Cloudflare DNS**. Leone's current interaction transport should migrate from the Discord Gateway to Discord's HTTP interactions endpoint so slash commands, buttons, and modals do not require an always-on process. A paid Render background worker remains an optional later component only when Leone needs passive Gateway events or a custom presence.
+The approved implementation direction is **React + Vite**, an **Express.js API**, and **Supabase PostgreSQL**, deployed free-first on **Vercel** with **Cloudflare DNS**. Slash commands, buttons, OAuth, admin APIs, health checks, and scheduler dispatch remain on Vercel. Interactive chat is isolated in a Render Background Worker using Discord Gateway events and Groq-backed retrieval-augmented generation (RAG).
 
-The next release must preserve the current deterministic permission and privacy model. Relationship lore never grants Discord authority, AI is not required for the features in this PRD, and no administrative action may rely only on a hidden Discord command or client-side web check.
+The next release must preserve the current deterministic permission and privacy model. Relationship lore never grants Discord authority, and no administrative action may rely on an LLM, hidden Discord command, or client-side web check.
 
 The delivery should remain incremental. A full rewrite, microservice fleet, Redis deployment, multi-agent system, and multi-guild support would add risk without solving a current requirement.
 
@@ -62,6 +62,22 @@ Current constraints:
 
 ## 4. Goals
 
+### G-07 — Interactive public chatbot
+
+Add a bounded Leone chat experience for direct mentions in owner-approved public
+channels and DMs. The first provider is Groq through its OpenAI-compatible API.
+The worker uses RAG over canonical server documents and new redacted messages
+from approved channels; it performs no historical backfill and never executes
+moderation or server-administration tools.
+
+The chatbot stores only versioned canonical documents, redacted rolling message
+chunks (7/14/30-day retention), and operational usage metadata. Supabase
+PostgreSQL full-text search is the initial retrieval mechanism; embeddings are a
+later, measured optimization. Admins control enablement, channel allowlist,
+trigger mode, retention, cooldown, daily quota, model, reindex, and purge from
+the Chatbot page. Vercel serves these controls; Render runs `node
+src/chat-worker.js`.
+
 ### G-01 — Durable data
 
 Move Bonds and all new mutable configuration into PostgreSQL without losing current user data, privacy, or deletion behavior.
@@ -91,7 +107,7 @@ Keep the initial infrastructure at zero cost when practical, while documenting t
 - Multi-guild SaaS behavior or public bot installation
 - Autonomous moderation or punishment
 - Passive collection of message content
-- General-purpose chatbot or LLM integration
+- Autonomous administrative actions through an LLM
 - Native mobile application
 - Payments, subscriptions, advertisements, or monetization
 - Redis, BullMQ, Kubernetes, or microservices before demonstrated need
@@ -216,6 +232,8 @@ Admin navigation:
 - **Discord configuration:** approved guild, channel IDs, role IDs, dashboard capabilities, and command status.
 - **Relationships operations:** aggregate counts, failed migrations, reported abuse cases, and user-requested deletion status; no unrestricted private relationship browser.
 - **Audit log:** actor, action, target category, result, timestamp, correlation ID, and reason where required.
+- **Moderation:** readiness, member actions, moderation cases, optional member DMs, and a configured moderation-log channel.
+- **Server administration:** bulk member-role operations, safe role metadata, channel create/edit, and constrained channel archiving.
 - **Operations:** maintenance mode, disable all schedules, retry one failed safe operation, and view deployment/runbook links.
 
 | ID | Requirement | Acceptance evidence |
@@ -226,7 +244,7 @@ Admin navigation:
 | WEB-04 | Consequential actions show the exact channel, role, and content before confirmation. | UI flow test |
 | WEB-05 | “Send greeting now,” enable schedule, delete schedule, and emergency disable create audit events. | Audit tests |
 | WEB-06 | Secrets are represented only as configured/not configured and cannot be retrieved through the API. | API response scan |
-| WEB-07 | The dashboard cannot directly mutate Discord roles or permissions in this release. | Route inventory review |
+| WEB-07 | The dashboard may perform only explicitly scoped Discord administration: role assignment/metadata and channel create/edit/archive; role permission-bit editing, deletion, reordering, and arbitrary permission-overwrite editing remain unavailable. | Route inventory and hierarchy tests |
 | WEB-08 | Health details that reveal infrastructure or IDs require admin authentication; public `/healthz` returns only healthy/unhealthy. | Access test |
 
 Recommended UI/backend stack:
@@ -326,6 +344,8 @@ All Discord IDs are `text`. Internal identifiers use UUIDs. Timestamps use `time
 | `greeting_quotes` | Curated local quote catalog and mood tags | Approved/disabled state; no unverified attribution |
 | `greeting_schedules` | Explicit opt-in schedules | Unique name per guild; enabled defaults false |
 | `greeting_runs` | Idempotency and operational history | Unique schedule + occurrence; configurable retention |
+| `moderation_cases` | Durable moderation actions and notification outcomes | Guild/target indexes; reasons capped at 512 characters |
+| `admin_operations` | Idempotent role/channel/server operations | Unique guild + client request ID; JSON preview/payload; auditable result |
 | `oauth_sessions` | Encrypted/hashed web session state | Expire automatically; revoke on logout |
 | `audit_events` | Admin/configuration security history | Append-only; no message content or secret values |
 | `schema_migrations` | Applied database migration versions | One row per applied migration |
@@ -360,17 +380,17 @@ flowchart LR
     S["Supabase Cron"] --> X["Secured greeting dispatcher"]
     X --> C
     X --> R["Discord REST API"]
-    F["Optional paid Render Gateway worker"] -. "future passive events or presence" .-> C
+    F["Render chatbot Gateway worker"] --> C
 ```
 
 ### Initial deployment topology
 
-Deploy two managed projects and keep one optional worker boundary:
+Deploy three cooperating services with a clear worker boundary:
 
 - **Vercel project:** React/Vite static application plus one exported Express application for Discord interactions, OAuth, API, health, and the internal greeting dispatcher.
 - **Supabase project:** PostgreSQL, SQL migrations, Vault-held scheduler secret, and one Cron trigger.
 - **Cloudflare zone:** authoritative DNS for `leonorekingdom.xyz`; it points `bots.leonorekingdom.xyz` to the Vercel-provided CNAME.
-- **Optional paid Render background worker:** added only if Leone later needs member-join, reaction, message, voice, or presence events from the Discord Gateway.
+- **Render background worker:** runs `node src/chat-worker.js` for mention/DM chat and approved-channel ingestion. Keep its Gateway listener separate from the Vercel HTTP interaction handler.
 
 Discord interaction delivery is either Gateway or HTTP for one application, not both. The cutover must therefore be rehearsed: deploy and validate the signature-verifying HTTP endpoint, configure the Discord Interactions Endpoint URL, verify commands/components, and only then stop the Gateway interaction handler. A Gateway worker added later must not register a second interaction handler.
 
@@ -420,13 +440,13 @@ Do not move every existing file before delivering the PostgreSQL repository. Ref
 | Frontend and Express API | Vercel Hobby | Native support for Vite, zero-configuration Express deployment, previews, TLS, rollback, and custom subdomains. | Serverless execution is not an always-on process; Hobby limits and non-commercial eligibility must be rechecked before launch. |
 | PostgreSQL and scheduler | Supabase Free | Full PostgreSQL, serverless transaction pooler, SQL migrations, Vault, and `pg_cron`-based scheduling. | 500 MB database, no automatic backups, low-activity pausing, and no Leone-controlled SLA. |
 | DNS/domain | Cloudflare DNS | Keeps the existing domain provider workflow and gives an upgrade path for proxy/WAF controls. | Vercel domain-verification records must remain DNS-only; proxy behavior must be tested before enabling it. |
-| Optional Gateway compute | Paid Render background worker | Familiar platform and the correct service type for a continuous outbound Gateway connection. | Background workers are not a Free service type; this adds cost and another deployment. |
+| Gateway compute | Paid Render background worker | Correct service type for a continuous outbound Gateway connection and bounded chat worker. | Background workers are not a Free service type; this adds cost and another deployment. |
 
 Vercel deploys an Express application as one Vercel Function, allows a Vite project to define Functions in the root `api` directory, and supports custom subdomains. Supabase recommends the Supavisor transaction-mode pooler on port `6543` for temporary serverless connections; prepared statements must be disabled in that mode. Use the Supabase CLI for tracked migrations and a direct connection where available for `pg_dump` and administrative tools.
 
-### Why Render is optional rather than primary
+### Why Render is separate from Vercel
 
-Render Free web services currently spin down after 15 minutes without incoming HTTP or WebSocket traffic and use an ephemeral filesystem. A Discord Gateway connection is outbound from Leone, so it is not a reliable wake signal for that service. Render background workers are designed for continuous processes but are paid. Render is therefore the fallback for future Gateway requirements, not the first host for the HTTP-only MVP.
+Render Free web services currently spin down after 15 minutes without incoming HTTP or WebSocket traffic and use an ephemeral filesystem. A Discord Gateway connection is outbound from Leone, so the chatbot must use a Background Worker rather than a web service. Vercel remains the HTTP/admin runtime; Render is the worker runtime.
 
 Do not use Render Free Postgres for Leone's durable data; its Free database currently expires after 30 days and has no backups.
 
@@ -436,7 +456,7 @@ Cloudflare Pages could host the React build, but placing the frontend there whil
 
 ### Paid reliability fallback
 
-Upgrade Supabase to Pro first when the project needs automatic backups, must not pause, exceeds quotas, or becomes operationally important. Upgrade Vercel when Hobby limits, commercial-use terms, function limits, collaboration, or precise platform cron are no longer suitable. Add a paid Render background worker only for an approved Gateway feature.
+Upgrade Supabase to Pro first when the project needs automatic backups, must not pause, exceeds quotas, or becomes operationally important. Upgrade Vercel when Hobby limits, commercial-use terms, function limits, collaboration, or precise platform cron are no longer suitable. Keep the Render worker enabled only while interactive chat is enabled.
 
 Free hosting is acceptable for development and an owner-approved beta. It must not be described as highly available production infrastructure.
 
@@ -554,6 +574,20 @@ PATCH  /api/v1/admin/greetings/schedules/:id
 DELETE /api/v1/admin/greetings/schedules/:id
 GET    /api/v1/admin/greetings/runs
 GET    /api/v1/admin/audit
+GET    /api/v1/admin/moderation/summary
+GET    /api/v1/admin/moderation/members
+GET    /api/v1/admin/moderation/cases
+POST   /api/v1/admin/moderation/actions
+GET    /api/v1/admin/server/roles
+GET    /api/v1/admin/server/members
+POST   /api/v1/admin/server/role-operations/preview
+POST   /api/v1/admin/server/role-operations
+POST   /api/v1/admin/server/roles
+PATCH  /api/v1/admin/server/roles/:roleId
+GET    /api/v1/admin/server/channels
+POST   /api/v1/admin/server/channels
+PATCH  /api/v1/admin/server/channels/:channelId
+POST   /api/v1/admin/server/channels/:channelId/archive
 ```
 
 Every endpoint is guild-scoped by server configuration, not a client-supplied arbitrary guild ID.
@@ -643,6 +677,17 @@ Exit: One opt-in test schedule completes for seven days without duplicates or un
 
 Exit: The owner approves the access matrix, schedule role/channel, privacy behavior, and free-host reliability limits.
 
+### Release 0.7 — Moderation and server administration
+
+- Moderation cases and controlled warn/timeout/kick/ban/unban/purge actions
+- Granular moderation and server-management capabilities
+- Bulk member-role assignment with typed confirmation and idempotency
+- Safe role metadata and channel create/edit/archive operations
+- Discord hierarchy and bot-permission readiness checks
+- Optional moderation DMs and private log-channel summaries
+
+Exit: An administrator can complete a test moderation action and a lower-level role/channel operation through the dashboard, with Supabase operation records and audit events, while forbidden hierarchy and permission changes are rejected.
+
 ## 16. Migration plan for current Bonds JSON
 
 1. Add PostgreSQL repository and keep JSON repository tests unchanged.
@@ -684,7 +729,7 @@ Recommended defaults are shown first:
 4. **Weather locality:** select the exact BMKG ADM4 code and public display label.
 5. **Schedule defaults:** disabled, `Asia/Jakarta`, 15-minute restart grace period, no default days/time until owner configuration.
 6. **Free hosting:** use Vercel Hobby + Supabase Free + Cloudflare DNS for development/beta; approve upgrades when the documented limits or reliability thresholds are reached.
-7. **Gateway behavior:** accept that HTTP-only Leone has no custom presence and no passive member/message/reaction events until a paid Render worker is approved.
+7. **Gateway behavior:** the Render worker handles mention/DM chatbot events only; Vercel remains authoritative for commands and components.
 8. **Backup destination:** choose an encrypted destination outside Supabase and a retention owner before production.
 9. **Admin capabilities:** identify exact Discord role IDs for configuration, greeting management, audit viewing, and abuse-response access.
 

@@ -209,7 +209,7 @@ function createApp(overrides = {}) {
 
   app.use((error, request, response, next) => {
     if (response.headersSent) return next(error);
-    const status = error instanceof ZodError ? 400 : error.code === 'PRIVATE_TREE' ? 403 : 500;
+    const status = error instanceof ZodError ? 400 : error.code === 'PRIVATE_TREE' ? 403 : error.status ?? 500;
     logger.error('http.request_failed', { correlationId: request.correlationId, status, error });
     response.status(status).json({
       error: error instanceof ZodError ? 'VALIDATION_FAILED' : error.code ?? 'INTERNAL_ERROR',

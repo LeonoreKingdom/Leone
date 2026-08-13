@@ -74,6 +74,129 @@ class DiscordRestClient {
     return this.rest.get(Routes.guildMember(guildId, userId));
   }
 
+  invalidateGuild(guildId) {
+    this.guildCache.delete(guildId);
+  }
+
+  async searchGuildMembers(guildId, query, limit = 25) {
+    return this.rest.get(Routes.guildMembersSearch(guildId), {
+      query: new URLSearchParams({
+        query: String(query ?? '').slice(0, 100),
+        limit: String(Math.min(Math.max(Number(limit) || 25, 1), 1000)),
+      }),
+    });
+  }
+
+  async createRole(guildId, payload, reason = null) {
+    const result = await this.rest.post(Routes.guildRoles(guildId), {
+      body: payload,
+      reason: reason ? String(reason).slice(0, 512) : undefined,
+    });
+    this.invalidateGuild(guildId);
+    return result;
+  }
+
+  async updateRole(guildId, roleId, payload, reason = null) {
+    const result = await this.rest.patch(Routes.guildRole(guildId, roleId), {
+      body: payload,
+      reason: reason ? String(reason).slice(0, 512) : undefined,
+    });
+    this.invalidateGuild(guildId);
+    return result;
+  }
+
+  async addMemberRole(guildId, userId, roleId, reason = null) {
+    const result = await this.rest.put(Routes.guildMemberRole(guildId, userId, roleId), {
+      reason: reason ? String(reason).slice(0, 512) : undefined,
+    });
+    this.invalidateGuild(guildId);
+    return result;
+  }
+
+  async removeMemberRole(guildId, userId, roleId, reason = null) {
+    const result = await this.rest.delete(Routes.guildMemberRole(guildId, userId, roleId), {
+      reason: reason ? String(reason).slice(0, 512) : undefined,
+    });
+    this.invalidateGuild(guildId);
+    return result;
+  }
+
+  async createChannel(guildId, payload, reason = null) {
+    const result = await this.rest.post(Routes.guildChannels(guildId), {
+      body: payload,
+      reason: reason ? String(reason).slice(0, 512) : undefined,
+    });
+    this.invalidateGuild(guildId);
+    return result;
+  }
+
+  async updateChannel(channelId, payload, reason = null) {
+    const result = await this.rest.patch(Routes.channel(channelId), {
+      body: payload,
+      reason: reason ? String(reason).slice(0, 512) : undefined,
+    });
+    return result;
+  }
+
+  async setChannelPermission(channelId, overwriteId, payload, reason = null) {
+    const result = await this.rest.put(Routes.channelPermission(channelId, overwriteId), {
+      body: payload,
+      reason: reason ? String(reason).slice(0, 512) : undefined,
+    });
+    return result;
+  }
+
+  async modifyGuildMember(guildId, userId, payload, reason = null) {
+    return this.rest.patch(Routes.guildMember(guildId, userId), {
+      body: payload,
+      reason: reason ? String(reason).slice(0, 512) : undefined,
+    });
+  }
+
+  async removeGuildMember(guildId, userId, reason = null) {
+    return this.rest.delete(Routes.guildMember(guildId, userId), {
+      reason: reason ? String(reason).slice(0, 512) : undefined,
+    });
+  }
+
+  async getGuildBans(guildId, limit = 1000) {
+    return this.rest.get(Routes.guildBans(guildId), {
+      query: new URLSearchParams({ limit: String(Math.min(Math.max(Number(limit) || 1000, 1), 1000)) }),
+    });
+  }
+
+  async createGuildBan(guildId, userId, deleteMessageSeconds = 0, reason = null) {
+    return this.rest.put(Routes.guildBan(guildId, userId), {
+      body: { delete_message_seconds: Math.min(Math.max(Number(deleteMessageSeconds) || 0, 0), 604800) },
+      reason: reason ? String(reason).slice(0, 512) : undefined,
+    });
+  }
+
+  async removeGuildBan(guildId, userId, reason = null) {
+    return this.rest.delete(Routes.guildBan(guildId, userId), {
+      reason: reason ? String(reason).slice(0, 512) : undefined,
+    });
+  }
+
+  async getChannelMessages(channelId, limit = 100) {
+    return this.rest.get(Routes.channelMessages(channelId), {
+      query: new URLSearchParams({ limit: String(Math.min(Math.max(Number(limit) || 100, 1), 100)) }),
+    });
+  }
+
+  async deleteMessage(channelId, messageId, reason = null) {
+    return this.rest.delete(Routes.channelMessage(channelId, messageId), {
+      reason: reason ? String(reason).slice(0, 512) : undefined,
+    });
+  }
+
+  async bulkDeleteMessages(channelId, messageIds, reason = null) {
+    return this.rest.post(`/channels/${channelId}/messages/bulk-delete`, {
+      body: { messages: messageIds },
+      reason: reason ? String(reason).slice(0, 512) : undefined,
+    });
+  }
+
   async getUser(userId) {
     const cached = this.userCache.get(userId);
     if (cached && cached.expiresAt > Date.now()) return cached.value;

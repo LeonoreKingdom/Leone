@@ -2,22 +2,74 @@ const { serialize } = require('cookie');
 const { z } = require('zod');
 
 const { AuditRepository } = require('../db/audit-repository');
+const { AdminRepository } = require('../db/admin-repository');
 const { checkDatabase } = require('../db/pool');
 const { createBmkgClient } = require('../features/automation/morning/bmkg-client');
 const { buildGreetingMessage } = require('../features/automation/greetings/greeting-message');
 const { GreetingRepository } = require('../features/automation/greetings/greeting-repository');
+const { KnowledgeRepository } = require('../features/chatbot/knowledge-repository');
+const { reindexCanonical } = require('../features/chatbot/knowledge-indexer');
+const { isPublicChannel } = require('../features/chatbot/knowledge-indexer');
 const { BondService } = require('../features/relationships/bond-service');
 const { createDefaultBondStore } = require('../features/relationships/bond-store');
 const { FamilyTreeService } = require('../features/relationships/family-service');
 const {
+  archiveChannel,
+  createChannel,
+  createRole,
+  executeRoleOperation,
+  previewRoleOperation,
+  serverReadiness,
+  updateChannel,
+  updateRole,
+} = require('../features/admin/server-admin-service');
+const { executeModeration, validateModerationInput } = require('../features/admin/moderation-service');
+const {
   CSRF_COOKIE,
   SESSION_COOKIE,
+  ALL_CAPABILITIES,
   cookieOptions,
   requireCapability,
   requireCsrf,
 } = require('./auth');
 
 const snowflake = z.string().regex(/^\d+$/);
+const uuid = z.string().uuid();
+const capabilityEnum = z.enum(ALL_CAPABILITIES);
+
+function requireModerationCapability(request, response, next) {
+  const action = request.body?.action;
+  const capability = {
+    warn: 'moderation.warn',
+    timeout: 'moderation.timeout',
+    untimeout: 'moderation.timeout',
+    kick: 'moderation.kick',
+    ban: 'moderation.ban',
+    unban: 'moderation.ban',
+    purge: 'moderation.messages',
+  }[action];
+  if (!capability || !request.auth?.capabilities.has(capability)) {
+    response.status(403).json({ error: 'CAPABILITY_REQUIRED', capability: capability ?? 'moderation.read' });
+    return;
+  }
+  next();
+}
+
+function serializeDiscordMember(member) {
+  return {
+    id: member.user?.id,
+    username: member.user?.username ?? null,
+    displayName: member.user?.global_name ?? member.user?.username ?? member.user?.id,
+    roles: member.roles ?? [],
+    joinedAt: member.joined_at ?? null,
+  };
+}
+
+async function getGuildSettings(pool, guildId) {
+  const { rows } = await pool.query('select settings from guilds where id = $1', [guildId]);
+  return rows[0]?.settings ?? {};
+}
+
 const scheduleSchema = z.object({
   name: z.string().min(1).max(80),
   channelId: snowflake,
@@ -52,7 +104,9 @@ function createApiRouter({
 }) {
   const router = express.Router();
   const audit = new AuditRepository(pool);
+  const admin = new AdminRepository(pool);
   const greetings = new GreetingRepository(pool);
+  const knowledge = new KnowledgeRepository(pool);
   const bonds = new BondService({ store: bondStore });
   const family = new FamilyTreeService({ store: bondStore });
   const csrf = requireCsrf(sessionRepository);
@@ -147,8 +201,8 @@ function createApiRouter({
       ...guildResult.rows[0],
       capabilityRoles: mappingResult.rows,
       discordOptions: {
-        roles: bundle.roles.filter((role) => role.id !== request.auth.guildId).map((role) => ({ id: role.id, name: role.name, color: role.color })),
-        channels: bundle.channels.filter((channel) => [0, 5].includes(channel.type)).map((channel) => ({ id: channel.id, name: channel.name, parentId: channel.parent_id ?? null })),
+        roles: bundle.roles.filter((role) => role.id !== request.auth.guildId).map((role) => ({ id: role.id, name: role.name, color: role.color, position: role.position, managed: Boolean(role.managed) })),
+        channels: bundle.channels.map((channel) => ({ id: channel.id, name: channel.name, type: channel.type, parentId: channel.parent_id ?? null })),
       },
     });
   }));
@@ -159,7 +213,7 @@ function createApiRouter({
       settings: z.record(z.string(), z.unknown()).optional(),
       capabilityRoles: z.array(z.object({
         roleId: snowflake,
-        capability: z.enum(['admin.read', 'config.write', 'greetings.manage', 'audit.read', 'relationships.abuse']),
+        capability: capabilityEnum,
       })).optional(),
     });
     const input = schema.parse(request.body);
@@ -168,7 +222,7 @@ function createApiRouter({
       await client.query('begin');
       await client.query(
         `update guilds set scheduler_enabled = coalesce($2, scheduler_enabled),
-          settings = coalesce($3::jsonb, settings), updated_at = now() where id = $1`,
+          settings = coalesce(settings, '{}'::jsonb) || coalesce($3::jsonb, '{}'::jsonb), updated_at = now() where id = $1`,
         [request.auth.guildId, input.schedulerEnabled, input.settings ? JSON.stringify(input.settings) : null],
       );
       if (input.capabilityRoles) {
@@ -186,6 +240,251 @@ function createApiRouter({
     }
     await audit.record({ guildId: request.auth.guildId, actorUserId: request.auth.userId, action: 'config.update', targetCategory: 'guild' });
     response.json({ updated: true });
+  }));
+
+  router.get('/admin/moderation/summary', requireCapability('moderation.read'), asyncRoute(async (request, response) => {
+    const [readiness, cases] = await Promise.all([
+      serverReadiness({ guildId: request.auth.guildId, restClient }),
+      admin.listCases({ guildId: request.auth.guildId, limit: 10 }),
+    ]);
+    response.json({ readiness, recentCases: cases });
+  }));
+
+  router.get('/admin/moderation/members', requireCapability('moderation.read'), asyncRoute(async (request, response) => {
+    const query = String(request.query.query ?? '').trim();
+    if (!query) return response.json([]);
+    const members = await restClient.searchGuildMembers(request.auth.guildId, query, Math.min(Number(request.query.limit) || 25, 100));
+    response.json(members.map(serializeDiscordMember));
+  }));
+
+  router.get('/admin/moderation/cases', requireCapability('moderation.read'), asyncRoute(async (request, response) => {
+    const rows = await admin.listCases({ guildId: request.auth.guildId, limit: Number(request.query.limit) || 100, before: request.query.before ?? null, targetUserId: request.query.targetUserId ?? null });
+    const ids = [...new Set(rows.flatMap((row) => [row.actor_user_id, row.target_user_id]).filter(Boolean))];
+    const labels = new Map();
+    await Promise.all(ids.map(async (id) => {
+      try {
+        const user = await restClient.getUser(id);
+        labels.set(id, `@${user.global_name ?? user.username}`);
+      } catch { labels.set(id, `<@${id}>`); }
+    }));
+    response.json(rows.map((row) => ({ ...row, actor: labels.get(row.actor_user_id), target: labels.get(row.target_user_id) })));
+  }));
+
+  router.post('/admin/moderation/actions', requireModerationCapability, csrf, asyncRoute(async (request, response) => {
+    const input = z.object({
+      action: z.enum(['warn', 'timeout', 'untimeout', 'kick', 'ban', 'unban', 'purge']),
+      targetUserId: snowflake.optional(),
+      reason: z.string().trim().min(1).max(512),
+      durationSeconds: z.number().int().positive().max(2419200).optional(),
+      deleteMessageSeconds: z.number().int().min(0).max(604800).optional(),
+      channelId: snowflake.optional(),
+      messageCount: z.number().int().min(1).max(100).optional(),
+      sendDm: z.boolean().default(false),
+      confirm: z.literal(true),
+      clientRequestId: uuid,
+    }).parse(request.body);
+    validateModerationInput(input);
+    const existing = await admin.findOperationByRequest(request.auth.guildId, input.clientRequestId);
+    if (existing) return response.json({ idempotent: true, operation: existing });
+    const settings = await getGuildSettings(pool, request.auth.guildId);
+    const operation = await admin.createOperation({
+      guildId: request.auth.guildId,
+      actorUserId: request.auth.userId,
+      operationType: 'moderation',
+      targetId: input.targetUserId ?? request.auth.userId,
+      clientRequestId: input.clientRequestId,
+      confirmationPhrase: 'CONFIRMED',
+      payload: input,
+    });
+    try {
+      const result = await executeModeration({ guildId: request.auth.guildId, actorUserId: request.auth.userId, restClient, repository: admin, audit, input, settings });
+      await admin.completeOperation({ id: operation.id, result: 'success', metadata: { caseId: result.id } });
+      response.status(201).json({ case: result, operationId: operation.id });
+    } catch (error) {
+      await admin.completeOperation({ id: operation.id, result: 'failed', errorCode: error.code ?? 'DISCORD_ACTION_FAILED', metadata: { message: error.message } });
+      throw error;
+    }
+  }));
+
+  router.get('/admin/chatbot/settings', requireCapability('chatbot.manage'), asyncRoute(async (request, response) => {
+    const [settings, bundle] = await Promise.all([
+      knowledge.getSettings(request.auth.guildId, { cooldown: config.CHATBOT_PER_USER_COOLDOWN_SECONDS, dailyLimit: config.CHATBOT_DAILY_REQUEST_LIMIT, model: config.GROQ_MODEL }),
+      restClient.getGuildBundle(request.auth.guildId, { refresh: true }),
+    ]);
+    const parentNames = new Map(bundle.channels.filter((channel) => channel.type === 4).map((item) => [item.id, item.name]));
+    response.json({
+      settings: { ...settings, channelIds: settings.channel_ids ?? [], triggerMode: settings.trigger_mode, retentionDays: settings.retention_days, perUserCooldownSeconds: settings.per_user_cooldown_seconds, dailyRequestLimit: settings.daily_request_limit },
+      channels: bundle.channels.filter((channel) => isPublicChannel(channel, parentNames)).map((channel) => ({ id: channel.id, name: channel.name, type: channel.type, parentId: channel.parent_id ?? null })),
+      readiness: { groq: Boolean(config.GROQ_API_KEY), gateway: Boolean(config.DISCORD_TOKEN), database: true },
+    });
+  }));
+
+  router.patch('/admin/chatbot/settings', requireCapability('chatbot.manage'), csrf, asyncRoute(async (request, response) => {
+    const current = await knowledge.getSettings(request.auth.guildId, { cooldown: config.CHATBOT_PER_USER_COOLDOWN_SECONDS, dailyLimit: config.CHATBOT_DAILY_REQUEST_LIMIT, model: config.GROQ_MODEL });
+    const input = z.object({
+      enabled: z.boolean().optional(),
+      channelIds: z.array(snowflake).max(100).optional(),
+      triggerMode: z.enum(['mention_dm', 'auto_response']).optional(),
+      retentionDays: z.union([z.literal(7), z.literal(14), z.literal(30)]).optional(),
+      perUserCooldownSeconds: z.number().int().min(0).max(3600).optional(),
+      dailyRequestLimit: z.number().int().min(0).max(100000).optional(),
+      model: z.string().trim().min(1).max(120).nullable().optional(),
+    }).parse(request.body);
+    const bundle = await restClient.getGuildBundle(request.auth.guildId, { refresh: true });
+    const parentNames = new Map(bundle.channels.filter((channel) => channel.type === 4).map((channel) => [channel.id, channel.name]));
+    const publicChannelIds = new Set(bundle.channels.filter((channel) => isPublicChannel(channel, parentNames)).map((channel) => channel.id));
+    const nextChannelIds = input.channelIds ?? current.channel_ids ?? [];
+    if (nextChannelIds.some((channelId) => !publicChannelIds.has(channelId))) throw new Error('Only owner-approved public channels can be selected for chatbot knowledge.');
+    const removedChannelIds = (current.channel_ids ?? []).filter((channelId) => !nextChannelIds.includes(channelId));
+    if (removedChannelIds.length) await knowledge.purgeMessageKnowledgeForChannels(request.auth.guildId, removedChannelIds);
+    const saved = await knowledge.upsertSettings(request.auth.guildId, {
+      enabled: input.enabled ?? current.enabled,
+      channelIds: nextChannelIds,
+      triggerMode: input.triggerMode ?? current.trigger_mode ?? 'mention_dm',
+      retentionDays: input.retentionDays ?? current.retention_days ?? 30,
+      perUserCooldownSeconds: input.perUserCooldownSeconds ?? current.per_user_cooldown_seconds ?? config.CHATBOT_PER_USER_COOLDOWN_SECONDS,
+      dailyRequestLimit: input.dailyRequestLimit ?? current.daily_request_limit ?? config.CHATBOT_DAILY_REQUEST_LIMIT,
+      model: input.model === undefined ? (current.model ?? config.GROQ_MODEL) : input.model,
+    });
+    await audit.record({ guildId: request.auth.guildId, actorUserId: request.auth.userId, action: 'chatbot.settings_update', targetCategory: 'chatbot', metadata: { enabled: saved.enabled, channelCount: saved.channel_ids.length, triggerMode: saved.trigger_mode } });
+    response.json(saved);
+  }));
+
+  router.get('/admin/chatbot/knowledge/status', requireCapability('chatbot.manage'), asyncRoute(async (request, response) => {
+    response.json(await knowledge.status(request.auth.guildId));
+  }));
+
+  router.post('/admin/chatbot/knowledge/reindex', requireCapability('chatbot.manage'), csrf, asyncRoute(async (request, response) => {
+    const result = await reindexCanonical({ guildId: request.auth.guildId, restClient, repository: knowledge });
+    await audit.record({ guildId: request.auth.guildId, actorUserId: request.auth.userId, action: 'chatbot.knowledge_reindex', targetCategory: 'knowledge', metadata: result });
+    response.json(result);
+  }));
+
+  router.post('/admin/chatbot/knowledge/purge', requireCapability('chatbot.manage'), csrf, asyncRoute(async (request, response) => {
+    const result = await knowledge.purgeMessageKnowledge(request.auth.guildId);
+    await audit.record({ guildId: request.auth.guildId, actorUserId: request.auth.userId, action: 'chatbot.knowledge_purge', targetCategory: 'knowledge', metadata: result });
+    response.json(result);
+  }));
+
+  router.get('/admin/server/roles', requireCapability('server.roles.read'), asyncRoute(async (request, response) => {
+    const readiness = await serverReadiness({ guildId: request.auth.guildId, restClient });
+    response.json({ roles: readiness.roles, bot: readiness.bot, permissions: readiness.permissions });
+  }));
+
+  router.get('/admin/server/members', requireCapability('server.roles.read'), asyncRoute(async (request, response) => {
+    const query = String(request.query.query ?? '').trim();
+    if (!query) return response.json([]);
+    const members = await restClient.searchGuildMembers(request.auth.guildId, query, Math.min(Number(request.query.limit) || 100, 1000));
+    response.json(members.map(serializeDiscordMember));
+  }));
+
+  router.post('/admin/server/role-operations/preview', requireCapability('server.roles.assign'), csrf, asyncRoute(async (request, response) => {
+    const input = z.object({ action: z.enum(['assign', 'remove']), roleId: snowflake, memberIds: z.array(snowflake).min(1).max(100) }).parse(request.body);
+    response.json(await previewRoleOperation({ guildId: request.auth.guildId, restClient, ...input }));
+  }));
+
+  router.post('/admin/server/role-operations', requireCapability('server.roles.assign'), csrf, asyncRoute(async (request, response) => {
+    const input = z.object({ action: z.enum(['assign', 'remove']), roleId: snowflake, memberIds: z.array(snowflake).min(1).max(100), reason: z.string().trim().min(1).max(512), confirmPhrase: z.string().trim().min(1).max(80), clientRequestId: uuid }).parse(request.body);
+    const existing = await admin.findOperationByRequest(request.auth.guildId, input.clientRequestId);
+    if (existing) return response.json({ idempotent: true, operation: existing });
+    const preview = await previewRoleOperation({ guildId: request.auth.guildId, restClient, ...input });
+    if (input.confirmPhrase !== preview.confirmationPhrase) throw new Error(`Confirmation must exactly equal ${preview.confirmationPhrase}.`);
+    const operation = await admin.createOperation({ guildId: request.auth.guildId, actorUserId: request.auth.userId, operationType: input.action === 'assign' ? 'role_assign' : 'role_remove', targetId: input.roleId, clientRequestId: input.clientRequestId, confirmationPhrase: input.confirmPhrase, preview, payload: input });
+    try {
+      const result = await executeRoleOperation({ guildId: request.auth.guildId, restClient, ...input, preview });
+      await admin.completeOperation({ id: operation.id, result: 'success', metadata: { affectedCount: result.affectedCount } });
+      await audit.record({ guildId: request.auth.guildId, actorUserId: request.auth.userId, action: `server.role_${input.action}`, targetCategory: 'role', targetId: input.roleId, reason: input.reason, metadata: { operationId: operation.id, affectedCount: result.affectedCount } });
+      response.status(201).json({ operationId: operation.id, result });
+    } catch (error) {
+      await admin.completeOperation({ id: operation.id, result: 'failed', errorCode: error.code ?? 'ROLE_OPERATION_FAILED', metadata: { message: error.message } });
+      throw error;
+    }
+  }));
+
+  router.post('/admin/server/roles', requireCapability('server.roles.manage'), csrf, asyncRoute(async (request, response) => {
+    const input = z.object({ name: z.string().trim().min(1).max(100), color: z.number().int().min(0).max(0xffffff).default(0), hoist: z.boolean().default(false), mentionable: z.boolean().default(false), reason: z.string().trim().min(1).max(512), confirm: z.literal(true), clientRequestId: uuid }).parse(request.body);
+    const existing = await admin.findOperationByRequest(request.auth.guildId, input.clientRequestId);
+    if (existing) return response.json({ idempotent: true, operation: existing });
+    const operation = await admin.createOperation({ guildId: request.auth.guildId, actorUserId: request.auth.userId, operationType: 'role_create', clientRequestId: input.clientRequestId, confirmationPhrase: 'CONFIRMED', payload: input });
+    try {
+      const role = await createRole({ guildId: request.auth.guildId, restClient, payload: input, reason: input.reason });
+      await admin.completeOperation({ id: operation.id, result: 'success', metadata: { roleId: role.id } });
+      await audit.record({ guildId: request.auth.guildId, actorUserId: request.auth.userId, action: 'server.role_create', targetCategory: 'role', targetId: role.id, reason: input.reason, metadata: { operationId: operation.id } });
+      response.status(201).json({ operationId: operation.id, role });
+    } catch (error) {
+      await admin.completeOperation({ id: operation.id, result: 'failed', errorCode: error.code ?? 'ROLE_CREATE_FAILED', metadata: { message: error.message } });
+      throw error;
+    }
+  }));
+
+  router.patch('/admin/server/roles/:roleId', requireCapability('server.roles.manage'), csrf, asyncRoute(async (request, response) => {
+    const input = z.object({ name: z.string().trim().min(1).max(100).optional(), color: z.number().int().min(0).max(0xffffff).optional(), hoist: z.boolean().optional(), mentionable: z.boolean().optional(), reason: z.string().trim().min(1).max(512), confirm: z.literal(true), clientRequestId: uuid }).parse(request.body);
+    const existing = await admin.findOperationByRequest(request.auth.guildId, input.clientRequestId);
+    if (existing) return response.json({ idempotent: true, operation: existing });
+    const operation = await admin.createOperation({ guildId: request.auth.guildId, actorUserId: request.auth.userId, operationType: 'role_update', targetId: request.params.roleId, clientRequestId: input.clientRequestId, confirmationPhrase: 'CONFIRMED', payload: input });
+    try {
+      const role = await updateRole({ guildId: request.auth.guildId, restClient, roleId: request.params.roleId, payload: input, reason: input.reason });
+      await admin.completeOperation({ id: operation.id, result: 'success', metadata: { roleId: role.id } });
+      await audit.record({ guildId: request.auth.guildId, actorUserId: request.auth.userId, action: 'server.role_update', targetCategory: 'role', targetId: role.id, reason: input.reason, metadata: { operationId: operation.id } });
+      response.json({ operationId: operation.id, role });
+    } catch (error) {
+      await admin.completeOperation({ id: operation.id, result: 'failed', errorCode: error.code ?? 'ROLE_UPDATE_FAILED', metadata: { message: error.message } });
+      throw error;
+    }
+  }));
+
+  router.get('/admin/server/channels', requireCapability('server.channels.read'), asyncRoute(async (request, response) => {
+    const readiness = await serverReadiness({ guildId: request.auth.guildId, restClient });
+    const settings = await getGuildSettings(pool, request.auth.guildId);
+    response.json({ channels: readiness.channels, bot: readiness.bot, permissions: readiness.permissions, settings: { moderation: settings.moderation ?? {} } });
+  }));
+
+  router.post('/admin/server/channels', requireCapability('server.channels.manage'), csrf, asyncRoute(async (request, response) => {
+    const input = z.object({ type: z.number().int(), name: z.string().trim().min(1).max(100), parentId: snowflake.nullable().optional(), topic: z.string().max(1024).nullable().optional(), rateLimitPerUser: z.number().int().min(0).max(21600).optional(), nsfw: z.boolean().optional(), bitrate: z.number().int().positive().optional(), userLimit: z.number().int().min(0).max(99).optional(), reason: z.string().trim().min(1).max(512), confirm: z.literal(true), clientRequestId: uuid }).parse(request.body);
+    const existing = await admin.findOperationByRequest(request.auth.guildId, input.clientRequestId);
+    if (existing) return response.json({ idempotent: true, operation: existing });
+    const operation = await admin.createOperation({ guildId: request.auth.guildId, actorUserId: request.auth.userId, operationType: 'channel_create', clientRequestId: input.clientRequestId, confirmationPhrase: 'CONFIRMED', payload: input });
+    try {
+      const channel = await createChannel({ guildId: request.auth.guildId, restClient, payload: input, reason: input.reason });
+      await admin.completeOperation({ id: operation.id, result: 'success', metadata: { channelId: channel.id } });
+      await audit.record({ guildId: request.auth.guildId, actorUserId: request.auth.userId, action: 'server.channel_create', targetCategory: 'channel', targetId: channel.id, reason: input.reason, metadata: { operationId: operation.id } });
+      response.status(201).json({ operationId: operation.id, channel });
+    } catch (error) {
+      await admin.completeOperation({ id: operation.id, result: 'failed', errorCode: error.code ?? 'CHANNEL_CREATE_FAILED', metadata: { message: error.message } });
+      throw error;
+    }
+  }));
+
+  router.patch('/admin/server/channels/:channelId', requireCapability('server.channels.manage'), csrf, asyncRoute(async (request, response) => {
+    const input = z.object({ name: z.string().trim().min(1).max(100).optional(), parentId: snowflake.nullable().optional(), topic: z.string().max(1024).nullable().optional(), rateLimitPerUser: z.number().int().min(0).max(21600).optional(), nsfw: z.boolean().optional(), reason: z.string().trim().min(1).max(512), confirm: z.literal(true), clientRequestId: uuid }).parse(request.body);
+    const existing = await admin.findOperationByRequest(request.auth.guildId, input.clientRequestId);
+    if (existing) return response.json({ idempotent: true, operation: existing });
+    const operation = await admin.createOperation({ guildId: request.auth.guildId, actorUserId: request.auth.userId, operationType: 'channel_update', targetId: request.params.channelId, clientRequestId: input.clientRequestId, confirmationPhrase: 'CONFIRMED', payload: input });
+    try {
+      const channel = await updateChannel({ guildId: request.auth.guildId, restClient, channelId: request.params.channelId, payload: input, reason: input.reason });
+      await admin.completeOperation({ id: operation.id, result: 'success', metadata: { channelId: channel.id } });
+      await audit.record({ guildId: request.auth.guildId, actorUserId: request.auth.userId, action: 'server.channel_update', targetCategory: 'channel', targetId: channel.id, reason: input.reason, metadata: { operationId: operation.id } });
+      response.json({ operationId: operation.id, channel });
+    } catch (error) {
+      await admin.completeOperation({ id: operation.id, result: 'failed', errorCode: error.code ?? 'CHANNEL_UPDATE_FAILED', metadata: { message: error.message } });
+      throw error;
+    }
+  }));
+
+  router.post('/admin/server/channels/:channelId/archive', requireCapability('server.channels.manage'), csrf, asyncRoute(async (request, response) => {
+    const input = z.object({ archiveCategoryId: snowflake, reason: z.string().trim().min(1).max(512), confirm: z.literal(true), clientRequestId: uuid }).parse(request.body);
+    const existing = await admin.findOperationByRequest(request.auth.guildId, input.clientRequestId);
+    if (existing) return response.json({ idempotent: true, operation: existing });
+    const operation = await admin.createOperation({ guildId: request.auth.guildId, actorUserId: request.auth.userId, operationType: 'channel_archive', targetId: request.params.channelId, clientRequestId: input.clientRequestId, confirmationPhrase: 'CONFIRMED', payload: input });
+    try {
+      const result = await archiveChannel({ guildId: request.auth.guildId, restClient, channelId: request.params.channelId, archiveCategoryId: input.archiveCategoryId, reason: input.reason });
+      await admin.completeOperation({ id: operation.id, result: 'success', metadata: { archiveCategoryId: input.archiveCategoryId } });
+      await audit.record({ guildId: request.auth.guildId, actorUserId: request.auth.userId, action: 'server.channel_archive', targetCategory: 'channel', targetId: request.params.channelId, reason: input.reason, metadata: { operationId: operation.id, archiveCategoryId: input.archiveCategoryId } });
+      response.json({ operationId: operation.id, result });
+    } catch (error) {
+      await admin.completeOperation({ id: operation.id, result: 'failed', errorCode: error.code ?? 'CHANNEL_ARCHIVE_FAILED', metadata: { message: error.message } });
+      throw error;
+    }
   }));
 
   router.get('/admin/greetings/templates', requireCapability('greetings.manage'), asyncRoute(async (request, response) => {

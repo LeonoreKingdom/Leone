@@ -7,11 +7,13 @@
     "build": "vite build",
     "dev": "node --watch server.js",
     "dev:gateway": "node --watch src/index.js",
+    "dev:chat-worker": "node --watch src/chat-worker.js",
     "dev:web": "vite",
     "deploy:commands": "node src/deploy-commands.js",
     "db:import-bonds": "node scripts/import-bonds.js",
     "db:seed": "node scripts/seed-database.js",
     "start": "node server.js",
+    "start:chat-worker": "node src/chat-worker.js",
     "test": "node --test",
     "test:unit": "node --test test/*.test.js",
     "test:integration": "node --test test/integration/*.test.js"

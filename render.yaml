@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: leone-chat-worker
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: node src/chat-worker.js
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: DISCORD_GUILD_ID
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        sync: false
+      - key: GROQ_MAX_OUTPUT_TOKENS
+        value: "600"
+      - key: GROQ_REQUEST_TIMEOUT_MS
+        value: "12000"
+      - key: CHATBOT_DAILY_REQUEST_LIMIT
+        value: "500"
+      - key: CHATBOT_PER_USER_COOLDOWN_SECONDS
+        value: "15"

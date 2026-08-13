@@ -6,6 +6,7 @@ This runbook targets the free-first beta topology:
 - Supabase Free PostgreSQL in `ap-southeast-1`
 - Cloudflare DNS for `bots.leonorekingdom.xyz` in DNS-only mode
 - Discord guild commands and outgoing interaction webhooks
+- Render Background Worker for interactive chatbot Gateway events
 
 Free plans are appropriate for development and limited beta, not a guarantee of
 always-on production availability or managed backups.
@@ -19,7 +20,7 @@ always-on production availability or managed backups.
 | Production deployment | `dpl_4toHu9Kkt2qqHe7HWdTtRpZ9A3tw` | READY |
 | Supabase project | `Leone` / `buzixaugbqtcmiwpwuem` | Active, Free |
 | Supabase region | `ap-southeast-1` | Active |
-| Discord application | `Leone` / `1532088865035124946` | 10 guild commands registered at the last deployment; source now defines 18 |
+| Discord application | `Leone` / `1532088865035124946` | Guild commands registered from the source manifest |
 | Discord guild | `332544131693936642` | Seeded |
 | Interactions endpoint | `/api/discord/interactions` | Verified by Discord |
 | Scheduler | `GREETINGS_SCHEDULER_ENABLED=false` | Disabled by default |
@@ -38,7 +39,7 @@ npm.cmd run build
 git diff --check
 ```
 
-Expected baseline: 51 tests pass, Vite builds `public/`, and diff check has no
+Expected baseline: 54 tests pass, Vite builds `public/`, and diff check has no
 errors. Line-ending warnings on Windows are informational.
 
 Never deploy `.env`, `data/`, database dumps, or generated secret files. Keep the
@@ -61,6 +62,8 @@ Apply migrations in filename order:
 202608030001_initial_leone.sql
 202608030002_import_tracking_and_cron.sql
 202608030003_runtime_role_and_indexes.sql
+202608120001_moderation_and_server_admin.sql
+202608130001_chatbot_knowledge.sql
 ```
 
 Post-migration checks:
@@ -73,9 +76,15 @@ select count(*) from pg_policies where schemaname = 'public';
 select jobname, schedule, active from cron.job order by jobname;
 ```
 
-Expected beta state: one guild, one idempotent JSON import, 15 runtime policies,
+Expected beta state: one guild, one idempotent JSON import, runtime policies for
+all application tables,
 and the daily retention job. Supabase security advisors should report no errors;
 unused-index notices are expected on an empty/low-volume beta database.
+
+The chatbot migration creates server-only `chatbot_settings`,
+`knowledge_documents`, `knowledge_chunks`, and `chat_usage` tables. Raw prompts
+and responses are not persisted; message-derived chunks use the configured
+7/14/30-day retention.
 
 ### Bonds JSON migration
 
@@ -154,11 +163,29 @@ Sensitive environment variables for Production and Preview:
 | `GREETINGS_SCHEDULER_ENABLED` | Yes | Keep `false` until UAT opt-in |
 | `SESSION_TTL_HOURS` | Yes | Recommended `24` |
 | `TMDB_API_KEY` or `TMDB_READ_ACCESS_TOKEN` | Movie feature | Store only one if possible; Read Access Token is preferred |
+| `GROQ_API_KEY` | Chatbot | Server-only Groq key; never expose to Vite |
+| `GROQ_MODEL` | Chatbot | Model currently available in the Groq account |
+| `GROQ_MAX_OUTPUT_TOKENS`, `GROQ_REQUEST_TIMEOUT_MS` | Chatbot | Recommended `600` and `12000` |
+| `CHATBOT_DAILY_REQUEST_LIMIT`, `CHATBOT_PER_USER_COOLDOWN_SECONDS` | Chatbot | Recommended `500` and `15` |
 | `BMKG_ADM4`, `GREETINGS_LOCATION` | Optional | Exact approved locality/display label |
 | `LOG_LEVEL` | Yes | `info` normally |
 
 Never prefix a server secret with `VITE_`; Vite-prefixed variables enter the
 browser bundle.
+
+### Render chatbot worker
+
+Deploy a separate Render **Background Worker** from this repository:
+
+```text
+Build command: npm ci
+Start command: node src/chat-worker.js
+```
+
+Set the Discord token, guild ID, `DATABASE_URL`, Groq variables, and chatbot
+limits in Render. Vercel remains responsible for HTTP interactions, OAuth,
+admin API, health checks, and scheduler dispatch. Render Free web services are
+not a reliable always-on Gateway host; use the Background Worker service type.
 
 Deployment sequence:
 
@@ -195,9 +222,15 @@ Application `1532088865035124946`:
    with owner approval; resetting invalidates the previous value immediately.
 4. Keep Public Client disabled because Leone performs a confidential
    server-side authorization-code exchange.
-5. Bot permissions: never grant Administrator. Grant only permissions required
-   by enabled commands and the approved channels.
-6. Register the guild command manifest:
+5. Bot permissions: never grant Administrator. For moderation/server administration,
+   grant only the approved permissions: `MODERATE_MEMBERS`, `KICK_MEMBERS`,
+   `BAN_MEMBERS`, `MANAGE_MESSAGES`, `MANAGE_ROLES`, `MANAGE_CHANNELS`,
+   `VIEW_CHANNEL`, and `SEND_MESSAGES` as applicable. Place Leone's bot role
+   above every role/member it must manage; Discord hierarchy still wins over
+   dashboard capabilities.
+6. Bot â†’ Privileged Gateway Intents: enable **Message Content Intent** for the
+   Render worker. The worker also requests Guild Messages and Direct Messages.
+7. Register the guild command manifest:
 
 ```powershell
 npm.cmd run deploy:commands

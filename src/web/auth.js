@@ -11,6 +11,18 @@ const ALL_CAPABILITIES = [
   'greetings.manage',
   'audit.read',
   'relationships.abuse',
+  'moderation.read',
+  'moderation.warn',
+  'moderation.timeout',
+  'moderation.kick',
+  'moderation.ban',
+  'moderation.messages',
+  'server.roles.read',
+  'server.roles.assign',
+  'server.roles.manage',
+  'server.channels.read',
+  'server.channels.manage',
+  'chatbot.manage',
 ];
 const SESSION_COOKIE = 'leone_session';
 const OAUTH_STATE_COOKIE = 'leone_oauth_state';

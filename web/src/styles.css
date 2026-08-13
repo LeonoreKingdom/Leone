@@ -24,6 +24,7 @@ header { margin-bottom:1.8rem } h1 { margin:.15rem 0;font-family:Georgia,serif;f
 .permission-menu { display:grid; gap:.45rem; margin-top:.4rem; padding:.8rem; border:1px solid #30476b; border-radius:9px; background:#0d1b31; }
 .permission-menu label { display:flex; align-items:center; gap:.5rem; color:#dfe7f4; }
 .permission-menu input { width:auto; }
+.channel-picker { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.45rem; padding:.8rem; border:1px solid #263a5c; border-radius:10px; background:#091426; margin:1rem 0; }
 .tags { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.55rem; }
 .tag { display:inline-flex; align-items:center; padding:.3rem .55rem; border-radius:999px; background:#23385f; color:#e8edf7; font-size:.78rem; }
 .muted { color:#8795ae; font-size:.82rem; }

@@ -119,9 +119,55 @@ steps in `Deploy.md`.
 | H-02 | Maintainer | Restore a `pg_dump` into an isolated Supabase/local database | Migrations, row counts, constraints, privacy tests, and sample tree queries pass. |
 | H-03 | Maintainer | Re-run the JSON importer | Existing checksum is reported as already imported; no duplicate data is created. |
 
+## I. Moderation
+
+Use disposable test members and a private moderation-log channel. Do not test
+against the guild owner or production staff roles.
+
+| ID | Actor | Action | Expected result |
+|---|---|---|---|
+| I-01 | Moderator | Open Moderation | Readiness and recent cases load; unavailable bot permissions are explicit. |
+| I-02 | Moderator | Warn a disposable member with a reason | A case and audit event are created; optional DM/log behavior matches the selection. |
+| I-03 | Moderator | Attempt kick or ban without the mapped capability | Request is rejected with `CAPABILITY_REQUIRED`. |
+| I-04 | Administrator | Timeout and remove timeout from a disposable member | Discord state changes and both actions create separate cases. |
+| I-05 | Administrator | Purge 1–100 recent test messages | Only eligible messages are deleted; older messages are rejected safely. |
+| I-06 | Administrator | Target the owner or a member at/above Leone's role | Action is rejected before Discord mutation. |
+| I-07 | Administrator | Retry an action with the same client request ID | The original operation is returned and no duplicate action occurs. |
+
+## J. Server administration
+
+| ID | Actor | Action | Expected result |
+|---|---|---|---|
+| J-01 | Administrator | Search and select disposable members, then preview bulk role assignment | Exact affected members/count and typed confirmation phrase are shown. |
+| J-02 | Administrator | Assign and remove a lower-level role | Operation succeeds and is audited. |
+| J-03 | Administrator | Select `@everyone`, a managed role, or a role above Leone | Operation is rejected safely. |
+| J-04 | Administrator | Create and edit role metadata | Name/color/hoist/mentionable change; permission bits remain unchanged. |
+| J-05 | Administrator | Create and edit a channel | Channel changes are applied and audited. |
+| J-06 | Administrator | Archive a test channel | Channel is locked and moved to the configured archive category. |
+| J-07 | Moderator | Open Server Administration | Role/channel mutation controls are unavailable. |
+
+## K. Interactive chatbot and server knowledge
+
+Use one or two disposable public channels selected in Admin → Chatbot. Keep the
+chatbot disabled until the Render worker is healthy and Message Content Intent is
+enabled in Discord Developer Portal.
+
+| ID | Actor | Scenario | Expected result |
+|---|---|---|---|
+| K-01 | Owner | Enable Chatbot, select an approved public channel, keep Mention and DM trigger | Settings save, audit event is created, and readiness shows Groq/Gateway/database status. |
+| K-02 | Member | Mention Leone in the approved channel with a question about server identity | Leone replies with canonical public context and no unintended mentions. |
+| K-03 | Member | Send Leone a DM | Leone replies; the DM is not ingested into shared knowledge. |
+| K-04 | Member | Mention Leone in an unapproved, staff, moderation, age-sensitive, or archived channel | No reply and no message-derived chunk is created. |
+| K-05 | Maintainer | Send an email, token-shaped secret, and prompt-injection text | Redaction occurs and the response does not follow administrative instructions. |
+| K-06 | Member | Send two mentions inside the cooldown or exceed a temporary daily limit | The request is throttled without a model call; only usage metadata is stored. |
+| K-07 | Owner | Run Reindex canonical knowledge, then inspect status | Canonical documents/chunks appear; no historical channel messages are imported. |
+| K-08 | Owner | Run Purge message knowledge | Message-derived chunks are deleted while canonical documents remain. |
+| K-09 | Maintainer | Remove/invalid Groq key or simulate timeout | Leone sends the safe fallback and the worker stays available. |
+| K-10 | Maintainer | Restart the Render worker | Gateway reconnects, slash commands/admin API remain unaffected, and no duplicate replies occur. |
+
 ## Acceptance record
 
-- Build/test baseline: 35 automated tests passing and Vite production build passing.
+- Build/test baseline: 54 automated tests passing and Vite production build passing.
 - Production URL: `https://bots.leonorekingdom.xyz`
 - Production deployment: `dpl_4toHu9Kkt2qqHe7HWdTtRpZ9A3tw`
 - Discord application: `1532088865035124946`
