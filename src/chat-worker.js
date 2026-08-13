@@ -45,7 +45,11 @@ function enqueue(task) {
 function drain() {
   while (active && inFlight < 4 && pending.length) {
     inFlight += 1;
-    Promise.resolve(pending.shift())().catch((error) => console.error('chatbot.worker_task_failed', error)).finally(() => { inFlight -= 1; drain(); });
+    const task = pending.shift();
+    Promise.resolve()
+      .then(() => task())
+      .catch((error) => console.error('chatbot.worker_task_failed', error))
+      .finally(() => { inFlight -= 1; drain(); });
   }
 }
 
