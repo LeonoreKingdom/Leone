@@ -12,6 +12,7 @@ const { reindexCanonical } = require('../features/chatbot/knowledge-indexer');
 const { isPublicChannel } = require('../features/chatbot/knowledge-indexer');
 const { BondService } = require('../features/relationships/bond-service');
 const { createDefaultBondStore } = require('../features/relationships/bond-store');
+const { createServerStatsService } = require('../features/kingdom/server-stats/service');
 const { FamilyTreeService } = require('../features/relationships/family-service');
 const {
   archiveChannel,
@@ -101,6 +102,7 @@ function createApiRouter({
   authenticate,
   bondStore = createDefaultBondStore(),
   bmkgClient = createBmkgClient(),
+  serverStats = null,
 }) {
   const router = express.Router();
   const audit = new AuditRepository(pool);
@@ -110,6 +112,7 @@ function createApiRouter({
   const bonds = new BondService({ store: bondStore });
   const family = new FamilyTreeService({ store: bondStore });
   const csrf = requireCsrf(sessionRepository);
+  const stats = serverStats ?? createServerStatsService({ restClient, config });
 
   router.use(authenticate);
 
@@ -189,6 +192,11 @@ function createApiRouter({
       recentRuns,
       release: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.npm_package_version ?? 'development',
     });
+  }));
+
+  router.get('/admin/server-stats', requireCapability('admin.read'), asyncRoute(async (request, response) => {
+    const result = await stats.get(request.auth.guildId);
+    response.json({ ...result, source: 'discord', endpoint: '/api/server-stats' });
   }));
 
   router.get('/admin/config', requireCapability('admin.read'), asyncRoute(async (request, response) => {

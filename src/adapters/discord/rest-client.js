@@ -70,6 +70,12 @@ class DiscordRestClient {
     return value;
   }
 
+  async getGuild(guildId) {
+    return this.rest.get(Routes.guild(guildId), {
+      query: new URLSearchParams({ with_counts: 'true' }),
+    });
+  }
+
   async getGuildMember(guildId, userId) {
     return this.rest.get(Routes.guildMember(guildId, userId));
   }

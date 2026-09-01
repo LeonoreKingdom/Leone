@@ -59,7 +59,7 @@ const commands = commandModules.map((command) => command.data);
 /**
  * @param {import('discord.js').ChatInputCommandInteraction} interaction
  */
-async function executeCommand(interaction) {
+async function executeCommand(interaction, context = {}) {
   const command = commandRegistry.get(interaction.commandName);
 
   if (!command) {
@@ -71,6 +71,7 @@ async function executeCommand(interaction) {
   await command.execute(interaction, {
     commandModules,
     commandRegistry,
+    ...context,
   });
 }
 

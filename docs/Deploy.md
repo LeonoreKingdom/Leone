@@ -167,11 +167,24 @@ Sensitive environment variables for Production and Preview:
 | `GROQ_MODEL` | Chatbot | Model currently available in the Groq account |
 | `GROQ_MAX_OUTPUT_TOKENS`, `GROQ_REQUEST_TIMEOUT_MS` | Chatbot | Recommended `600` and `12000` |
 | `CHATBOT_DAILY_REQUEST_LIMIT`, `CHATBOT_PER_USER_COOLDOWN_SECONDS` | Chatbot | Recommended `500` and `15` |
+| `SERVER_STATS_API_KEY` | Optional | 16+ character server-side key for website calls to `/api/server-stats`; never expose to Vite |
+| `STATS_FEATURED_USER_IDS` | Optional | Comma-separated public Discord user IDs to show in admin/website profile cards |
+| `STATS_CACHE_TTL_SECONDS` | Optional | 5–300 second cache window; default `30` |
 | `BMKG_ADM4`, `GREETINGS_LOCATION` | Optional | Exact approved locality/display label |
 | `LOG_LEVEL` | Yes | `info` normally |
 
 Never prefix a server secret with `VITE_`; Vite-prefixed variables enter the
 browser bundle.
+
+### Live server statistics
+
+The `/server-stats` guild command and the admin **Live Server Stats** page read
+aggregate counts and selected public profile URLs directly from Discord. The
+website should call `GET /api/server-stats` from its server-side route. If
+`SERVER_STATS_API_KEY` is configured, pass it as `x-leone-stats-key` (or a Bearer
+token) from that server-side route; the response is `private, no-store` when
+protected. Without the key, the response is intentionally limited to safe
+aggregate/profile data and uses a short public cache.
 
 ### Render chatbot worker
 

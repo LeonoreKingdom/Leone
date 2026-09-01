@@ -1,6 +1,10 @@
 const { z } = require('zod');
 
 const optionalUrl = z.string().url().optional();
+const optionalSecret = z.preprocess(
+  (value) => value === '' ? undefined : value,
+  z.string().min(16).optional(),
+);
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DISCORD_TOKEN: z.string().min(1).optional(),
@@ -22,6 +26,9 @@ const envSchema = z.object({
   GROQ_MODEL: z.string().min(1).max(120).default('llama-3.1-8b-instant'),
   GROQ_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(64).max(2000).default(600),
   GROQ_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(12000),
+  SERVER_STATS_API_KEY: optionalSecret,
+  STATS_FEATURED_USER_IDS: z.string().optional(),
+  STATS_CACHE_TTL_SECONDS: z.coerce.number().int().min(5).max(300).default(30),
   CHATBOT_DAILY_REQUEST_LIMIT: z.coerce.number().int().min(0).max(100000).default(500),
   CHATBOT_PER_USER_COOLDOWN_SECONDS: z.coerce.number().int().min(0).max(3600).default(15),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),

@@ -32,6 +32,14 @@ Optional environment variables:
   by the manual `/morning` greeting, for example `31.71.03.1001`.
 - `MORNING_LOCATION` — optional display label that overrides the
   location name returned by BMKG.
+- `SERVER_STATS_API_KEY` — optional 16+ character key for the read-only
+  live statistics endpoint. Keep it server-side and share it only with the
+  website's server-side route.
+- `STATS_FEATURED_USER_IDS` — optional comma-separated Discord user IDs to
+  include as public profile cards (the guild owner, Leanne, and Leone are
+  included automatically when available).
+- `STATS_CACHE_TTL_SECONDS` — live statistics cache lifetime from 5 to 300
+  seconds; defaults to 30.
 
 Only one TMDB credential is required. Leone prefers
 `TMDB_READ_ACCESS_TOKEN` when both are present. Keep either credential in
@@ -51,6 +59,17 @@ Deploy the updated Discord command after configuring the credential:
 ```powershell
 npm.cmd run deploy:commands
 ```
+
+## Live server statistics
+
+Leone's `/server-stats` command and the admin **Live Server Stats** page read
+current aggregate counts from Discord. The read-only website integration
+endpoint is `GET /api/server-stats` (also available at
+`/api/v1/public/server-stats`). It returns the guild name, member count,
+approximate online count, icon URL, and selected public Discord profile URLs.
+No bot token is included. When `SERVER_STATS_API_KEY` is set, send it from a
+server-side caller using `x-leone-stats-key` or `Authorization: Bearer ...`;
+never expose it in browser code.
 
 ## Manual morning greeting
 

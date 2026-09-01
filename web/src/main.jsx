@@ -8,6 +8,7 @@ import leoneLogo from '../../leone.png';
 
 const nav = [
   ['overview', 'Overview', 'admin.read'],
+  ['server-stats', 'Live Server Stats', 'admin.read'],
   ['family', 'Family Tree', null],
   ['config', 'Configuration', 'admin.read'],
   ['greetings', 'Greetings', 'greetings.manage'],
@@ -48,6 +49,24 @@ function Overview() {
       <article className="card"><span>Discord</span><strong>{data.discord.name}</strong><small>{data.discord.guildId}</small></article>
     </div>
     <Panel title="Recent greeting runs"><DataTable rows={data.recentRuns} columns={['schedule_name', 'status', 'scheduled_for', 'error_code']} /></Panel>
+  </section>;
+}
+
+function ServerStats() {
+  const state = useLoad(() => api('/admin/server-stats'), []);
+  if (state.loading || state.error) return <Status state={state} />;
+  const stats = state.data;
+  const online = stats.onlineCount == null ? 'Unavailable' : stats.onlineCount.toLocaleString();
+  const members = stats.memberCount == null ? 'Unavailable' : stats.memberCount.toLocaleString();
+  return <section>
+    <header><p className="eyebrow">Discord source of truth</p><h1>Live server statistics</h1></header>
+    <div className="cards">
+      <article className="card"><span>Total members</span><strong>{members}</strong><small>Discord approximate count</small></article>
+      <article className="card"><span>Online now</span><strong>{online}</strong><small>Discord approximate presence count</small></article>
+      <article className="card"><span>Last refreshed</span><strong>{new Date(stats.updatedAt).toLocaleTimeString()}</strong><small>Cached for 30 seconds</small></article>
+    </div>
+    <Panel title="Featured public profiles"><div className="profile-grid">{(stats.profiles ?? []).map((profile) => <a className="profile-card" href={profile.profileUrl} target="_blank" rel="noreferrer" key={profile.id}>{profile.avatarUrl && <img src={profile.avatarUrl} alt="" loading="lazy" />}<span><strong>{profile.displayName}</strong><small>@{profile.username ?? profile.id}</small></span></a>)}</div></Panel>
+    <Panel title="Website integration"><p className="muted">The website should call this endpoint from its server-side route:</p><code>/api/server-stats</code><p className="muted">Only aggregate counts and selected public profile URLs are returned. Bot credentials never leave Leone’s server.</p></Panel>
   </section>;
 }
 
@@ -505,7 +524,7 @@ function App() {
     location.assign('/');
   }
   const allowed = (capability) => !capability || me.capabilities.includes(capability);
-  const pages = { overview: <Overview />, family: <Family me={me} />, config: <Config canWrite={allowed('config.write')} />, greetings: <Greetings />, moderation: <Moderation />, 'server-admin': <ServerAdmin canConfig={allowed('config.write')} />, chatbot: <Chatbot />, audit: <Audit /> };
+  const pages = { overview: <Overview />, 'server-stats': <ServerStats />, family: <Family me={me} />, config: <Config canWrite={allowed('config.write')} />, greetings: <Greetings />, moderation: <Moderation />, 'server-admin': <ServerAdmin canConfig={allowed('config.write')} />, chatbot: <Chatbot />, audit: <Audit /> };
   return <div className="shell"><aside><div className="brand"><img className="crest-logo small" src={leoneLogo} alt="Leone" /><div><strong>Leone</strong><span>Royal companion</span></div></div><nav>{nav.filter((item) => allowed(item[2])).map(([key,label]) => <button key={key} className={page === key ? 'active' : ''} onClick={() => { setPage(key); history.replaceState(null, '', key === 'family' ? `/family/${me.user.id}` : `/admin/${key}`); }}>{label}</button>)}</nav><div className="identity"><strong>{me.user.displayName}</strong><span>{me.owner ? 'Guild owner' : 'Kingdom member'}</span><button className="secondary logout" onClick={logout}>Sign out</button></div></aside><main>{pages[page] ?? pages.overview}</main></div>;
 }
 

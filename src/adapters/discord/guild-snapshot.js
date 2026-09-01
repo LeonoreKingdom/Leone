@@ -127,6 +127,7 @@ async function createGuildSnapshot({ guildId, member, restClient, channelId }) {
     ownerId: guild.owner_id,
     rulesChannelId: guild.rules_channel_id ?? null,
     memberCount: guild.approximate_member_count ?? 0,
+    onlineMemberCount: guild.approximate_presence_count ?? null,
     createdTimestamp: Number(SnowflakeUtil.timestampFrom(guild.id)),
     iconURL: ({ size = 256 } = {}) =>
       guild.icon

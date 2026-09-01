@@ -21,6 +21,7 @@ const { GreetingRepository } = require('./src/features/automation/greetings/gree
 const { buildPingContent } = require('./src/features/system/ping.command');
 const { executeComponent } = require('./src/interactions/component-registry');
 const { createLogger } = require('./src/shared/logger');
+const { createServerStatsService } = require('./src/features/kingdom/server-stats/service');
 const { createApiRouter } = require('./src/web/api');
 const { createAuthMiddleware, createAuthRouter } = require('./src/web/auth');
 const { SessionRepository } = require('./src/web/session-repository');
@@ -42,6 +43,9 @@ function createApp(overrides = {}) {
   const pool = overrides.pool ?? (config.DATABASE_URL ? getPool() : null);
   const restClient = overrides.restClient ?? (config.DISCORD_TOKEN
     ? new DiscordRestClient({ token: config.DISCORD_TOKEN, applicationId: config.DISCORD_CLIENT_ID })
+    : null);
+  const serverStats = overrides.serverStats ?? (restClient
+    ? createServerStatsService({ restClient, config })
     : null);
   const registerBackgroundTask = overrides.waitUntil ?? vercelWaitUntil;
   const app = express();
@@ -70,6 +74,32 @@ function createApp(overrides = {}) {
       try { await checkDatabase(pool); } catch { healthy = false; }
     }
     response.status(healthy ? 200 : 503).json({ status: healthy ? 'healthy' : 'unhealthy' });
+  });
+
+  app.get(['/api/server-stats', '/api/v1/public/server-stats'], async (request, response) => {
+    const providedKey = request.get('x-leone-stats-key')
+      ?? request.get('authorization')?.replace(/^Bearer\s+/i, '');
+    if (config.SERVER_STATS_API_KEY && !safeEqual(providedKey, config.SERVER_STATS_API_KEY)) {
+      response.status(401).json({ error: 'STATS_AUTH_REQUIRED' });
+      return;
+    }
+    if (!serverStats || !config.DISCORD_GUILD_ID) {
+      response.status(503).json({ error: 'STATS_NOT_CONFIGURED' });
+      return;
+    }
+    try {
+      const result = await serverStats.get(config.DISCORD_GUILD_ID);
+      response.setHeader(
+        'Cache-Control',
+        config.SERVER_STATS_API_KEY
+          ? 'private, no-store'
+          : 'public, s-maxage=30, stale-while-revalidate=120',
+      );
+      response.json({ ...result, source: 'discord' });
+    } catch (error) {
+      logger.error('server_stats_request_failed', { correlationId: request.correlationId, error });
+      response.status(502).json({ error: 'STATS_UNAVAILABLE' });
+    }
   });
 
   app.post('/api/discord/interactions', express.raw({ type: 'application/json', limit: '1mb' }), async (request, response) => {
@@ -129,7 +159,7 @@ function createApp(overrides = {}) {
         const contextStartedAt = Date.now();
         const interaction = await createHttpInteraction({ payload, response, restClient, preDeferred: true });
         const contextDurationMs = Date.now() - contextStartedAt;
-        if (isCommand) await executeCommand(interaction);
+        if (isCommand) await executeCommand(interaction, { serverStats });
         else if (!(await executeComponent(interaction))) throw new Error(`Unsupported component: ${interaction.customId}`);
         logger.info('discord.interaction_completed', {
           correlationId: request.correlationId,
@@ -183,7 +213,7 @@ function createApp(overrides = {}) {
     const authRouter = createAuthRouter({ express, config, sessionRepository: sessions, pool, restClient, auditRepository: audit });
     app.use('/auth', authRouter);
     app.use('/api/auth', authRouter);
-    app.use('/api/v1', createApiRouter({ express, config, pool, restClient, sessionRepository: sessions, authenticate, bondStore: overrides.bondStore, bmkgClient: overrides.bmkgClient }));
+    app.use('/api/v1', createApiRouter({ express, config, pool, restClient, sessionRepository: sessions, authenticate, bondStore: overrides.bondStore, bmkgClient: overrides.bmkgClient, serverStats }));
   }
 
   app.post('/api/internal/greetings/dispatch', async (request, response) => {

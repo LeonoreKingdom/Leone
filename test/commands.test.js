@@ -170,6 +170,7 @@ test('registry contains unique commands with valid help metadata', () => {
     'server-map',
     'rules',
     'server',
+    'server-stats',
     'bonds',
     'recommend',
     'movie',

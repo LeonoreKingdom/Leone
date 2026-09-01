@@ -26,6 +26,12 @@ header { margin-bottom:1.8rem } h1 { margin:.15rem 0;font-family:Georgia,serif;f
 .permission-menu input { width:auto; }
 .channel-picker { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.45rem; padding:.8rem; border:1px solid #263a5c; border-radius:10px; background:#091426; margin:1rem 0; }
 .tags { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.55rem; }
+.profile-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:.7rem; }
+.profile-card { display:flex; align-items:center; gap:.7rem; padding:.7rem; border:1px solid #263a5c; border-radius:12px; background:#091426; color:#e8edf7; text-decoration:none; }
+.profile-card:hover { border-color:#e7c47a; }
+.profile-card img { width:42px; height:42px; border-radius:50%; object-fit:cover; background:#172744; }
+.profile-card span,.profile-card strong,.profile-card small { display:block; }
+.profile-card small { color:#8795ae; font-size:.78rem; margin-top:.15rem; }
 .tag { display:inline-flex; align-items:center; padding:.3rem .55rem; border-radius:999px; background:#23385f; color:#e8edf7; font-size:.78rem; }
 .muted { color:#8795ae; font-size:.82rem; }
 .flow { height:580px;border:1px solid #263a5c;border-radius:16px;overflow:hidden;background:#091426 }.react-flow__node { background:#1d355d;color:#fff;border:1px solid #5c79a8;border-radius:10px;padding:10px;min-width:130px;text-align:center }.react-flow__node.root-node{background:#6d5528;border-color:#e7c47a}.react-flow__edge-text{fill:#d7deec}.react-flow__edge-textbg{fill:#091426}.react-flow__controls button{padding:0;background:#fff}.react-flow__minimap{background:#111f37}

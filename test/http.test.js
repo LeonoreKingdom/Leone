@@ -52,6 +52,43 @@ test('health check is explicit when dependencies are not configured', async () =
   assert.deepEqual(response.body, { status: 'unhealthy' });
 });
 
+test('server stats endpoint returns safe live data and enforces its optional key', async () => {
+  const keys = fixture();
+  const apiKey = 'server-stats-test-key';
+  const app = createApp({
+    config: {
+      ...config(keys.publicKeyHex),
+      DISCORD_GUILD_ID: '332544131693936642',
+      SERVER_STATS_API_KEY: apiKey,
+    },
+    serverStats: {
+      get: async () => ({
+        guildId: '332544131693936642',
+        name: "Leonore's Kingdom",
+        memberCount: 10,
+        onlineCount: 3,
+        iconUrl: null,
+        profiles: [{ id: '1', displayName: 'Leonore', username: 'leonore', avatarUrl: 'https://cdn.discordapp.com/embed/avatars/0.png', profileUrl: 'https://discord.com/users/1' }],
+        updatedAt: new Date().toISOString(),
+      }),
+    },
+  });
+
+  const rejected = await request(app).get('/api/server-stats');
+  assert.equal(rejected.status, 401);
+  assert.equal(rejected.body.error, 'STATS_AUTH_REQUIRED');
+
+  const response = await request(app)
+    .get('/api/server-stats')
+    .set('x-leone-stats-key', apiKey);
+  assert.equal(response.status, 200);
+  assert.equal(response.body.source, 'discord');
+  assert.equal(response.body.memberCount, 10);
+  assert.equal(response.body.profiles[0].profileUrl, 'https://discord.com/users/1');
+  assert.equal(response.body.botToken, undefined);
+  assert.equal(response.headers['cache-control'], 'private, no-store');
+});
+
 test('Discord interaction endpoint rejects unsigned requests', async () => {
   const app = createApp({ config: config('0'.repeat(64)) });
   const response = await request(app)
