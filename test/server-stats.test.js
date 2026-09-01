@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const {
+  buildServerStatsFromGatewayGuild,
   createServerStatsService,
   fallbackAvatarUrl,
   profileFromUser,
@@ -54,6 +55,117 @@ test('server stats service tolerates unavailable featured users and missing pres
   assert.equal(result.profiles.length, 1);
 });
 
+test('server stats service counts roles and includes public Admin and Moderator profiles', async () => {
+  const users = {
+    '1': { id: '1', username: 'owner', global_name: 'Owner', avatar: null },
+    '2': { id: '2', username: 'admin', global_name: 'Admin One', avatar: null },
+    '3': { id: '3', username: 'moderator', global_name: 'Moderator One', avatar: null },
+    '4': { id: '4', username: 'bot', global_name: 'Leone', avatar: null, bot: true },
+  };
+  const members = [
+    { user: users['1'], roles: ['citizen'] },
+    { user: users['2'], roles: ['citizen', 'admin'] },
+    { user: users['3'], roles: ['moderator'] },
+    { user: users['4'], roles: ['citizen'] },
+  ];
+  const service = createServerStatsService({
+    restClient: {
+      getGuild: async () => ({ id: 'guild', name: 'Kingdom', owner_id: '1', member_count: 4, approximate_presence_count: 2 }),
+      getBotUser: async () => users['4'],
+      getUser: async (id) => users[id],
+      getGuildRoles: async () => [
+        { id: 'citizen', name: 'Citizen' },
+        { id: 'admin', name: 'Admin' },
+        { id: 'moderator', name: 'Moderator' },
+      ],
+      getGuildMembers: async () => members,
+    },
+  });
+
+  const result = await service.get('guild');
+  assert.equal(result.citizenCount, 3);
+  assert.equal(result.botCount, 1);
+  assert.equal(result.inVoiceCount, null);
+  assert.deepEqual(result.profiles.map((profile) => [profile.displayName, profile.role ?? null]), [
+    ['Owner', null],
+    ['Leone', null],
+    ['Admin One', 'Admin'],
+    ['Moderator One', 'Moderator'],
+  ]);
+});
+
+test('gateway server stats snapshot counts presences, voice states, bots, and staff roles', () => {
+  const citizenRole = { id: 'citizen', name: 'Citizen' };
+  const adminRole = { id: 'admin', name: 'Admin' };
+  const moderatorRole = { id: 'moderator', name: 'Moderator' };
+  const owner = { id: '1', username: 'owner', global_name: 'Owner', avatar: null, bot: false };
+  const admin = { id: '2', username: 'admin', global_name: 'Admin One', avatar: null, bot: false };
+  const moderator = { id: '3', username: 'moderator', global_name: 'Moderator One', avatar: null, bot: false };
+  const bot = { id: '4', username: 'bot', global_name: 'Leone', avatar: null, bot: true };
+  const members = [
+    { user: owner, roles: { cache: new Map([[citizenRole.id, citizenRole]]) } },
+    { user: admin, roles: { cache: new Map([[citizenRole.id, citizenRole], [adminRole.id, adminRole]]) } },
+    { user: moderator, roles: { cache: new Map([[moderatorRole.id, moderatorRole]]) } },
+    { user: bot, roles: { cache: new Map() } },
+  ];
+  const result = buildServerStatsFromGatewayGuild({
+    guild: {
+      id: 'guild',
+      name: 'Kingdom',
+      ownerId: owner.id,
+      memberCount: members.length,
+      members: { cache: new Map(members.map((member) => [member.user.id, member])) },
+      roles: { cache: new Map([['citizen', citizenRole], ['admin', adminRole], ['moderator', moderatorRole]]) },
+      presences: { cache: new Map([['1', { status: 'online' }], ['2', { status: 'idle' }]]) },
+      voiceStates: { cache: new Map([['2', { channelId: 'voice-1' }], ['3', { channelId: 'voice-1' }]]) },
+      iconURL: () => 'https://cdn.discordapp.com/icons/guild/icon.png?size=256',
+    },
+    botUser: bot,
+    now: () => 1_000,
+  });
+
+  assert.equal(result.citizenCount, 2);
+  assert.equal(result.onlineCount, 2);
+  assert.equal(result.inVoiceCount, 2);
+  assert.equal(result.botCount, 1);
+  assert.deepEqual(result.profiles.map((profile) => [profile.displayName, profile.role ?? null]), [
+    ['Owner', null],
+    ['Leone', null],
+    ['Admin One', 'Admin'],
+    ['Moderator One', 'Moderator'],
+  ]);
+});
+
+test('server stats service prefers a fresh Gateway snapshot for voice totals', async () => {
+  const service = createServerStatsService({
+    restClient: {
+      getGuild: async () => { throw new Error('REST fallback should not run for a fresh snapshot'); },
+      getBotUser: async () => { throw new Error('REST fallback should not run for a fresh snapshot'); },
+    },
+    snapshotRepository: {
+      get: async () => ({
+        guildId: 'guild',
+        name: 'Kingdom',
+        memberCount: 42,
+        citizenCount: 30,
+        onlineCount: 7,
+        inVoiceCount: 3,
+        botCount: 2,
+        iconUrl: null,
+        profiles: [],
+        updatedAt: new Date(1_000).toISOString(),
+      }),
+    },
+    config: { STATS_GATEWAY_SNAPSHOT_MAX_AGE_SECONDS: 180 },
+    now: () => 2_000,
+  });
+
+  const result = await service.get('guild');
+  assert.equal(result.inVoiceCount, 3);
+  assert.equal(result.botCount, 2);
+  assert.equal(result.onlineCount, 7);
+});
+
 test('server stats command uses live service data and avoids mentions', async () => {
   let reply;
   const interaction = {
@@ -64,9 +176,17 @@ test('server stats command uses live service data and avoids mentions', async ()
     client: { user: { displayAvatarURL: () => 'https://example.com/leone.png' } },
   };
   await command.execute(interaction, {
-    serverStats: { get: async () => ({ name: 'Kingdom', memberCount: 10, onlineCount: 3, updatedAt: new Date().toISOString(), iconUrl: null, profiles: [] }) },
+    serverStats: { get: async () => ({ name: 'Kingdom', memberCount: 10, citizenCount: 8, onlineCount: 3, inVoiceCount: 2, botCount: 1, updatedAt: new Date().toISOString(), iconUrl: null, profiles: [] }) },
   });
-  assert.match(reply.embeds[0].toJSON().title, /Kingdom/);
+  const embed = reply.embeds[0].toJSON();
+  assert.match(embed.title, /Kingdom/);
+  assert.deepEqual(embed.fields.slice(0, 5).map((field) => [field.name, field.value]), [
+    ['Total Members', '10'],
+    ['Citizen', '8'],
+    ['Online', '3'],
+    ['In Voice', '2'],
+    ['Bots', '1'],
+  ]);
   assert.deepEqual(reply.allowedMentions, { parse: [] });
 });
 

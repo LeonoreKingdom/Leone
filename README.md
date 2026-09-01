@@ -38,6 +38,12 @@ Optional environment variables:
 - `STATS_FEATURED_USER_IDS` — optional comma-separated Discord user IDs to
   include as public profile cards (the guild owner, Leanne, and Leone are
   included automatically when available).
+- `STATS_CITIZEN_ROLE_NAME`, `STATS_ADMIN_ROLE_NAME`, and
+  `STATS_MODERATOR_ROLE_NAME` — role names used for the Citizen count and
+  public Admin/Moderator profile selection; they default to `Citizen`,
+  `Admin`, and `Moderator`.
+- `STATS_ROLE_PROFILE_LIMIT` — maximum profiles selected per staff role,
+  from 1 to 5; defaults to `2`.
 - `STATS_CACHE_TTL_SECONDS` — live statistics cache lifetime from 5 to 300
   seconds; defaults to 30.
 
@@ -65,11 +71,23 @@ npm.cmd run deploy:commands
 Leone's `/server-stats` command and the admin **Live Server Stats** page read
 current aggregate counts from Discord. The read-only website integration
 endpoint is `GET /api/server-stats` (also available at
-`/api/v1/public/server-stats`). It returns the guild name, member count,
-approximate online count, icon URL, and selected public Discord profile URLs.
-No bot token is included. When `SERVER_STATS_API_KEY` is set, send it from a
-server-side caller using `x-leone-stats-key` or `Authorization: Bearer ...`;
-never expose it in browser code.
+`/api/v1/public/server-stats`). It returns `Total Members`, `Citizen`,
+`Online`, `In Voice`, `Bots`, the guild name and icon, plus selected public
+Discord profile URLs. Profiles selected from the configured Admin and
+Moderator roles include their role label. No bot token is included. When
+`SERVER_STATS_API_KEY` is set, send it from a server-side caller using
+`x-leone-stats-key` or `Authorization: Bearer ...`; never expose it in browser
+code.
+
+`In Voice` and the complete presence-based `Online` count are produced by the
+optional Render Gateway snapshot worker. To activate that path, first apply
+`supabase/migrations/202609010001_server_stats_snapshots.sql`, enable the
+`GUILD_MEMBERS` and `GUILD_PRESENCES` privileged intents in the Discord
+Developer Portal, then set `SERVER_STATS_GATEWAY_ENABLED=true` on the Render
+worker. `GUILD_VOICE_STATES` is requested automatically with that setting. The
+worker refreshes the snapshot every `STATS_GATEWAY_SNAPSHOT_INTERVAL_SECONDS`
+seconds; until it is enabled, unavailable fields are returned as `null` rather
+than guessed.
 
 ## Manual morning greeting
 

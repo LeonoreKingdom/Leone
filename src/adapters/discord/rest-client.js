@@ -80,6 +80,18 @@ class DiscordRestClient {
     return this.rest.get(Routes.guildMember(guildId, userId));
   }
 
+  async getGuildRoles(guildId) {
+    return this.rest.get(Routes.guildRoles(guildId));
+  }
+
+  async getGuildMembers(guildId, { limit = 1_000, after = null } = {}) {
+    const query = new URLSearchParams({
+      limit: String(Math.min(Math.max(Number(limit) || 1_000, 1), 1_000)),
+    });
+    if (after) query.set('after', String(after));
+    return this.rest.get(Routes.guildMembers(guildId), { query });
+  }
+
   invalidateGuild(guildId) {
     this.guildCache.delete(guildId);
   }

@@ -169,7 +169,12 @@ Sensitive environment variables for Production and Preview:
 | `CHATBOT_DAILY_REQUEST_LIMIT`, `CHATBOT_PER_USER_COOLDOWN_SECONDS` | Chatbot | Recommended `500` and `15` |
 | `SERVER_STATS_API_KEY` | Optional | 16+ character server-side key for website calls to `/api/server-stats`; never expose to Vite |
 | `STATS_FEATURED_USER_IDS` | Optional | Comma-separated public Discord user IDs to show in admin/website profile cards |
+| `STATS_CITIZEN_ROLE_NAME`, `STATS_ADMIN_ROLE_NAME`, `STATS_MODERATOR_ROLE_NAME` | Optional | Role names for Citizen counts and Admin/Moderator profile selection; defaults are `Citizen`, `Admin`, and `Moderator` |
+| `STATS_ROLE_PROFILE_LIMIT` | Optional | Maximum public profiles selected per staff role; default `2` |
 | `STATS_CACHE_TTL_SECONDS` | Optional | 5–300 second cache window; default `30` |
+| `SERVER_STATS_GATEWAY_ENABLED` | Optional | Set `true` only after the snapshot migration and privileged intents are ready; default `false` |
+| `STATS_GATEWAY_SNAPSHOT_INTERVAL_SECONDS` | Optional | Gateway snapshot refresh interval from 15–300 seconds; default `30` |
+| `STATS_GATEWAY_SNAPSHOT_MAX_AGE_SECONDS` | Optional | Maximum age accepted by the HTTP/API service from 30–900 seconds; default `180` |
 | `BMKG_ADM4`, `GREETINGS_LOCATION` | Optional | Exact approved locality/display label |
 | `LOG_LEVEL` | Yes | `info` normally |
 
@@ -185,6 +190,16 @@ website should call `GET /api/server-stats` from its server-side route. If
 token) from that server-side route; the response is `private, no-store` when
 protected. Without the key, the response is intentionally limited to safe
 aggregate/profile data and uses a short public cache.
+
+The response includes `memberCount`, `citizenCount`, `onlineCount`,
+`inVoiceCount`, and `botCount`. `citizenCount` and staff profile selection use
+the configured role names. The HTTP service can obtain member and role data via
+Discord REST, but reliable voice totals and complete presence snapshots require
+the persistent Render Gateway worker. Apply
+`supabase/migrations/202609010001_server_stats_snapshots.sql` before enabling
+`SERVER_STATS_GATEWAY_ENABLED=true`, and enable Discord's **Server Members
+Intent** and **Presence Intent** in the Developer Portal. The worker requests
+the standard Guild Voice States intent alongside them.
 
 ### Render chatbot worker
 
@@ -241,8 +256,10 @@ Application `1532088865035124946`:
    `VIEW_CHANNEL`, and `SEND_MESSAGES` as applicable. Place Leone's bot role
    above every role/member it must manage; Discord hierarchy still wins over
    dashboard capabilities.
-6. Bot â†’ Privileged Gateway Intents: enable **Message Content Intent** for the
-   Render worker. The worker also requests Guild Messages and Direct Messages.
+6. Bot â†’ Privileged Gateway Intents: enable **Message Content Intent**,
+   **Server Members Intent**, and **Presence Intent** for the Render worker
+   when live server snapshots are enabled. The worker also requests Guild
+   Messages, Direct Messages, and Guild Voice States.
 7. Register the guild command manifest:
 
 ```powershell

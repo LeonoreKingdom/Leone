@@ -22,6 +22,7 @@ const { buildPingContent } = require('./src/features/system/ping.command');
 const { executeComponent } = require('./src/interactions/component-registry');
 const { createLogger } = require('./src/shared/logger');
 const { createServerStatsService } = require('./src/features/kingdom/server-stats/service');
+const { ServerStatsSnapshotRepository } = require('./src/features/kingdom/server-stats/snapshot-repository');
 const { createApiRouter } = require('./src/web/api');
 const { createAuthMiddleware, createAuthRouter } = require('./src/web/auth');
 const { SessionRepository } = require('./src/web/session-repository');
@@ -44,8 +45,11 @@ function createApp(overrides = {}) {
   const restClient = overrides.restClient ?? (config.DISCORD_TOKEN
     ? new DiscordRestClient({ token: config.DISCORD_TOKEN, applicationId: config.DISCORD_CLIENT_ID })
     : null);
+  const snapshotRepository = overrides.snapshotRepository ?? (pool
+    ? new ServerStatsSnapshotRepository(pool)
+    : null);
   const serverStats = overrides.serverStats ?? (restClient
-    ? createServerStatsService({ restClient, config })
+    ? createServerStatsService({ restClient, config, snapshotRepository })
     : null);
   const registerBackgroundTask = overrides.waitUntil ?? vercelWaitUntil;
   const app = express();

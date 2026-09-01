@@ -66,9 +66,12 @@ test('server stats endpoint returns safe live data and enforces its optional key
         guildId: '332544131693936642',
         name: "Leonore's Kingdom",
         memberCount: 10,
+        citizenCount: 8,
         onlineCount: 3,
+        inVoiceCount: 2,
+        botCount: 1,
         iconUrl: null,
-        profiles: [{ id: '1', displayName: 'Leonore', username: 'leonore', avatarUrl: 'https://cdn.discordapp.com/embed/avatars/0.png', profileUrl: 'https://discord.com/users/1' }],
+        profiles: [{ id: '1', displayName: 'Leonore', username: 'leonore', role: 'Admin', avatarUrl: 'https://cdn.discordapp.com/embed/avatars/0.png', profileUrl: 'https://discord.com/users/1' }],
         updatedAt: new Date().toISOString(),
       }),
     },
@@ -84,6 +87,10 @@ test('server stats endpoint returns safe live data and enforces its optional key
   assert.equal(response.status, 200);
   assert.equal(response.body.source, 'discord');
   assert.equal(response.body.memberCount, 10);
+  assert.equal(response.body.citizenCount, 8);
+  assert.equal(response.body.inVoiceCount, 2);
+  assert.equal(response.body.botCount, 1);
+  assert.equal(response.body.profiles[0].role, 'Admin');
   assert.equal(response.body.profiles[0].profileUrl, 'https://discord.com/users/1');
   assert.equal(response.body.botToken, undefined);
   assert.equal(response.headers['cache-control'], 'private, no-store');

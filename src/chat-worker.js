@@ -8,6 +8,8 @@ const { createGroqClient } = require('./features/chatbot/groq-client');
 const { createChatbotService, isBlockedChannel } = require('./features/chatbot/chatbot-service');
 const { KnowledgeRepository } = require('./features/chatbot/knowledge-repository');
 const { redactText } = require('./features/chatbot/redaction');
+const { buildServerStatsFromGatewayGuild } = require('./features/kingdom/server-stats/service');
+const { ServerStatsSnapshotRepository } = require('./features/kingdom/server-stats/snapshot-repository');
 
 const config = getConfig();
 requireConfig('DISCORD_TOKEN', 'DATABASE_URL');
@@ -15,12 +17,32 @@ const pool = getPool();
 const repository = new KnowledgeRepository(pool);
 const groqClient = createGroqClient({ config });
 const chatbot = createChatbotService({ config, repository, groqClient });
+const statsSnapshotRepository = config.serverStatsGatewayEnabled
+  ? new ServerStatsSnapshotRepository(pool)
+  : null;
+const intents = [
+  GatewayIntentBits.Guilds,
+  GatewayIntentBits.GuildMessages,
+  GatewayIntentBits.DirectMessages,
+  GatewayIntentBits.MessageContent,
+];
+if (config.serverStatsGatewayEnabled) {
+  intents.push(
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildPresences,
+    GatewayIntentBits.GuildVoiceStates,
+  );
+}
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent],
+  intents,
   partials: [Partials.Channel],
 });
 
 let discordReady = false;
+let statsMembersLoaded = false;
+let statsRefreshTimer = null;
+let statsRefreshInterval = null;
+let statsRefreshInFlight = null;
 const httpPort = Number(process.env.PORT || 3000);
 const httpServer = http.createServer((request, response) => {
   if (request.method !== 'GET' || !['/', '/healthz', '/wake'].includes(request.url)) {
@@ -53,13 +75,57 @@ function drain() {
   }
 }
 
+async function refreshStatsSnapshot() {
+  if (!statsSnapshotRepository || !discordReady || statsRefreshInFlight) return statsRefreshInFlight;
+
+  statsRefreshInFlight = (async () => {
+    const guild = client.guilds.cache.get(config.DISCORD_GUILD_ID)
+      ?? await client.guilds.fetch(config.DISCORD_GUILD_ID);
+    if (!guild) throw new Error(`Guild ${config.DISCORD_GUILD_ID} is not available in the Gateway cache.`);
+    if (!statsMembersLoaded) {
+      await guild.members.fetch();
+      statsMembersLoaded = true;
+    }
+    const snapshot = buildServerStatsFromGatewayGuild({
+      guild,
+      botUser: client.user,
+      config,
+      membersComplete: statsMembersLoaded,
+    });
+    await statsSnapshotRepository.upsert(snapshot);
+  })()
+    .catch((error) => console.error('server_stats_snapshot_failed', error))
+    .finally(() => { statsRefreshInFlight = null; });
+
+  return statsRefreshInFlight;
+}
+
+function scheduleStatsSnapshot(delayMs = 1_000) {
+  if (!statsSnapshotRepository) return;
+  if (statsRefreshTimer) clearTimeout(statsRefreshTimer);
+  statsRefreshTimer = setTimeout(() => {
+    statsRefreshTimer = null;
+    void refreshStatsSnapshot();
+  }, delayMs);
+  statsRefreshTimer.unref?.();
+}
+
 client.once(Events.ClientReady, (readyClient) => {
   discordReady = true;
   console.log(`Leone chatbot worker logged in as ${readyClient.user.tag}`);
   repository.touchWorker(config.DISCORD_GUILD_ID).catch((error) => console.error('chatbot.worker_heartbeat_failed', error));
   setInterval(() => repository.touchWorker(config.DISCORD_GUILD_ID).catch((error) => console.error('chatbot.worker_heartbeat_failed', error)), 60_000).unref();
   readyClient.user.setPresence({ activities: [{ name: 'the Kingdom', type: ActivityType.Listening }], status: 'online' });
+  if (statsSnapshotRepository) {
+    scheduleStatsSnapshot(0);
+    statsRefreshInterval = setInterval(() => scheduleStatsSnapshot(0), config.STATS_GATEWAY_SNAPSHOT_INTERVAL_SECONDS * 1_000);
+    statsRefreshInterval.unref?.();
+  }
 });
+
+for (const event of [Events.VoiceStateUpdate, Events.PresenceUpdate, Events.GuildMemberAdd, Events.GuildMemberRemove, Events.GuildMemberUpdate, Events.GuildRoleCreate, Events.GuildRoleDelete, Events.GuildRoleUpdate]) {
+  client.on(event, () => scheduleStatsSnapshot());
+}
 
 client.on(Events.MessageCreate, (message) => enqueue(async () => {
   if (!message || message.author?.bot || message.webhookId) return;
@@ -80,6 +146,8 @@ async function shutdown(signal) {
   if (!active) return;
   active = false;
   pending.length = 0;
+  if (statsRefreshTimer) clearTimeout(statsRefreshTimer);
+  if (statsRefreshInterval) clearInterval(statsRefreshInterval);
   discordReady = false;
   client.destroy();
   await new Promise((resolve) => httpServer.close(resolve));

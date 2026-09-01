@@ -28,7 +28,15 @@ const envSchema = z.object({
   GROQ_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(12000),
   SERVER_STATS_API_KEY: optionalSecret,
   STATS_FEATURED_USER_IDS: z.string().optional(),
+  STATS_CITIZEN_ROLE_NAME: z.string().min(1).max(100).default('Citizen'),
+  STATS_ADMIN_ROLE_NAME: z.string().min(1).max(100).default('Admin'),
+  STATS_MODERATOR_ROLE_NAME: z.string().min(1).max(100).default('Moderator'),
+  STATS_ROLE_PROFILE_LIMIT: z.coerce.number().int().min(1).max(5).default(2),
+  STATS_MAX_MEMBER_PAGES: z.coerce.number().int().min(1).max(1000).default(100),
   STATS_CACHE_TTL_SECONDS: z.coerce.number().int().min(5).max(300).default(30),
+  STATS_GATEWAY_SNAPSHOT_MAX_AGE_SECONDS: z.coerce.number().int().min(30).max(900).default(180),
+  SERVER_STATS_GATEWAY_ENABLED: z.enum(['true', 'false']).default('false'),
+  STATS_GATEWAY_SNAPSHOT_INTERVAL_SECONDS: z.coerce.number().int().min(15).max(300).default(30),
   CHATBOT_DAILY_REQUEST_LIMIT: z.coerce.number().int().min(0).max(100000).default(500),
   CHATBOT_PER_USER_COOLDOWN_SECONDS: z.coerce.number().int().min(0).max(3600).default(15),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
@@ -51,6 +59,8 @@ function getConfig(options = {}) {
       ...parsed.data,
       greetingsSchedulerEnabled:
         parsed.data.GREETINGS_SCHEDULER_ENABLED === 'true',
+      serverStatsGatewayEnabled:
+        parsed.data.SERVER_STATS_GATEWAY_ENABLED === 'true',
       isProduction: parsed.data.NODE_ENV === 'production',
     };
   }
