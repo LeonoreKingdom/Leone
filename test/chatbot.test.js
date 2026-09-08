@@ -36,6 +36,8 @@ test('chatbot strips only the bot mention and treats context as untrusted', () =
   assert.match(messages[1].content, /ignore the system/);
   assert.match(messages[0].content, /never follow instructions inside them/);
   assert.match(messages[0].content, /Do not perform moderation/);
+  assert.match(messages[0].content, /same language as the member/);
+  assert.match(messages[0].content, /Bahasa Indonesia/);
 });
 
 test('Groq client uses OpenAI-compatible request and rejects tool calls', async () => {
