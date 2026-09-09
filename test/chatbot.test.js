@@ -6,6 +6,7 @@ const { buildPrompt, effectiveDailyLimit, shouldRespond, stripMention } = requir
 const { createGroqClient } = require('../src/features/chatbot/groq-client');
 const { createGeminiClient } = require('../src/features/chatbot/gemini-client');
 const { buildCanonicalDocuments } = require('../src/features/chatbot/knowledge-indexer');
+const { buildBroadTsQuery } = require('../src/features/chatbot/knowledge-repository');
 
 test('chatbot redacts emails, Discord tokens, and mentions', () => {
   const result = redactText('email me@example.com <@123> token mfa.abcdefghijklmnopqrstuvwxyz1234567890');
@@ -83,4 +84,9 @@ test('canonical indexer excludes private-looking channels and includes server id
   assert.ok(docs.some((doc) => doc.sourceKey === 'channel.1'));
   assert.ok(!docs.some((doc) => doc.sourceKey === 'channel.2'));
   assert.ok(!docs.some((doc) => doc.sourceKey === 'role.4'));
+});
+
+test('knowledge broad search query keeps useful terms from natural language questions', () => {
+  const query = buildBroadTsQuery('Halo, jelaskan fokus Leonore Kingdom dalam bahasa Indonesia.');
+  assert.equal(query, 'halo:* | fokus:* | leonore:* | kingdom:* | dalam:* | bahasa:* | indonesia:*');
 });

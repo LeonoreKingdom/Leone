@@ -11,7 +11,7 @@ function buildCanonicalDocuments(bundle) {
   const guild = bundle.guild;
   const documents = [{
     sourceType: 'canonical', sourceKey: 'server.identity', title: 'Leonore’s Kingdom identity',
-    content: `Server: ${guild.name}. Home for Talented People, Safe Space for Citizen. WE BELONG TOGETHER — It’s not just a community, it’s a palace to reach your dreams and your safe haven. Traits: talented, growth mindset, safe space, gaming, friendship, creativity, and learning. Games include Mobile Legends: Bang Bang, DotA 2, Genshin Impact, Roblox, Valorant, Honkai: Star Rail, and osu!. Leone is an AI-generated royal companion and may be incorrect.`,
+    content: `Server: ${guild.name}. Focus: Home for Talented People, Safe Space for Citizen. WE BELONG TOGETHER — It’s not just a community, it’s a palace to reach your dreams and your safe haven. Server focus and traits: talented people, growth mindset, safe space, gaming, friendship, creativity, and learning. Dalam Bahasa Indonesia: rumah bagi orang berbakat, ruang aman untuk warga, kebersamaan, pertumbuhan, dan bermain bersama. Games include Mobile Legends: Bang Bang, DotA 2, Genshin Impact, Roblox, Valorant, Honkai: Star Rail, and osu!. Leone is an AI-generated royal companion and may be incorrect.`,
   }];
   const parentNames = new Map(bundle.channels.filter((channel) => channel.type === 4).map((channel) => [channel.id, channel.name]));
   for (const channel of bundle.channels.filter((item) => isPublicChannel(item, parentNames))) documents.push({ sourceType: 'channel', sourceKey: `channel.${channel.id}`, title: `Public channel #${channel.name}`, content: `Public channel #${channel.name}${channel.topic ? `: ${channel.topic}` : ''}.` });

@@ -2,6 +2,21 @@ const { randomUUID } = require('node:crypto');
 
 function json(value) { return JSON.stringify(value ?? {}); }
 
+const SEARCH_STOPWORDS = new Set([
+  'apa', 'apakah', 'bagaimana', 'bisa', 'boleh', 'dapat', 'dengan', 'dan', 'dari', 'di',
+  'jelaskan', 'jelaskanlah', 'mohon', 'untuk', 'yang', 'ini', 'itu', 'the', 'what', 'how',
+  'can', 'could', 'please', 'about', 'tell', 'this', 'that', 'with', 'from', 'are',
+]);
+
+function buildBroadTsQuery(query) {
+  const terms = String(query ?? '')
+    .normalize('NFKC')
+    .toLocaleLowerCase()
+    .match(/[\p{L}\p{N}]{3,}/gu) ?? [];
+  const uniqueTerms = [...new Set(terms.filter((term) => !SEARCH_STOPWORDS.has(term)))].slice(0, 24);
+  return uniqueTerms.map((term) => `${term}:*`).join(' | ') || null;
+}
+
 class KnowledgeRepository {
   constructor(pool) { this.pool = pool; }
 
@@ -42,11 +57,19 @@ class KnowledgeRepository {
 
   async search({ guildId, query, channelId = null, limit = 8 }) {
     if (!query) return [];
-    const { rows } = await this.pool.query(`select id, source_type, channel_id, content, metadata, ts_rank(search_vector, websearch_to_tsquery('simple', $2)) as rank
-      from knowledge_chunks where guild_id = $1 and (expires_at is null or expires_at > now())
-      and (source_type = 'canonical' or ($3::text is not null and channel_id = $3))
-      and search_vector @@ websearch_to_tsquery('simple', $2)
-      order by rank desc, created_at desc limit $4`, [guildId, query.slice(0, 500), channelId, Math.min(Math.max(limit, 1), 8)]);
+    const searchQuery = query.slice(0, 500);
+    const broadQuery = buildBroadTsQuery(searchQuery);
+    const { rows } = await this.pool.query(`with parsed as (
+        select websearch_to_tsquery('simple', $2) as strict_query,
+               case when $3::text is not null then to_tsquery('simple', $3) end as broad_query
+      )
+      select id, source_type, channel_id, content, metadata,
+        ts_rank(search_vector, strict_query) + coalesce(ts_rank(search_vector, broad_query), 0) as rank
+      from knowledge_chunks, parsed
+      where guild_id = $1 and (expires_at is null or expires_at > now())
+      and (source_type = 'canonical' or ($4::text is not null and channel_id = $4))
+      and (search_vector @@ strict_query or (broad_query is not null and search_vector @@ broad_query))
+      order by rank desc, created_at desc limit $5`, [guildId, searchQuery, broadQuery, channelId, Math.min(Math.max(limit, 1), 8)]);
     return rows;
   }
 
@@ -88,4 +111,4 @@ function splitText(text, size = 1500) {
   return chunks;
 }
 
-module.exports = { KnowledgeRepository, splitText };
+module.exports = { KnowledgeRepository, buildBroadTsQuery, splitText };
