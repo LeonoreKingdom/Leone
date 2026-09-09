@@ -7,7 +7,7 @@ class KnowledgeRepository {
 
   async getSettings(guildId, defaults = {}) {
     const { rows } = await this.pool.query('select * from chatbot_settings where guild_id = $1', [guildId]);
-    return rows[0] ?? { guild_id: guildId, enabled: false, channel_ids: [], trigger_mode: 'mention_dm', retention_days: 30, per_user_cooldown_seconds: defaults.cooldown ?? 15, daily_request_limit: defaults.dailyLimit ?? 500, model: defaults.model ?? null };
+    return rows[0] ?? { guild_id: guildId, enabled: false, channel_ids: [], trigger_mode: 'mention_dm', retention_days: 30, per_user_cooldown_seconds: defaults.cooldown ?? 15, daily_request_limit: defaults.dailyLimit ?? 100, model: defaults.model ?? null };
   }
 
   async upsertSettings(guildId, input) {

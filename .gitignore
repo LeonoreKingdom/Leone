@@ -7,5 +7,6 @@ public/
 coverage/
 .vercel/
 .supabase/
+supabase/.temp/
 backups/
 *.log

@@ -154,7 +154,7 @@ enabled in Discord Developer Portal.
 
 | ID | Actor | Scenario | Expected result |
 |---|---|---|---|
-| K-01 | Owner | Enable Chatbot, select an approved public channel, keep Mention and DM trigger | Settings save, audit event is created, and readiness shows Groq/Gateway/database status. |
+| K-01 | Owner | Enable Chatbot, select an approved public channel, keep Mention and DM trigger | Settings save, audit event is created, and readiness shows Gemini AI Studio/Gateway/database status. |
 | K-02 | Member | Mention Leone in the approved channel with a question about server identity | Leone replies with canonical public context and no unintended mentions. |
 | K-03 | Member | Send Leone a DM | Leone replies; the DM is not ingested into shared knowledge. |
 | K-04 | Member | Mention Leone in an unapproved, staff, moderation, age-sensitive, or archived channel | No reply and no message-derived chunk is created. |
@@ -162,12 +162,12 @@ enabled in Discord Developer Portal.
 | K-06 | Member | Send two mentions inside the cooldown or exceed a temporary daily limit | The request is throttled without a model call; only usage metadata is stored. |
 | K-07 | Owner | Run Reindex canonical knowledge, then inspect status | Canonical documents/chunks appear; no historical channel messages are imported. |
 | K-08 | Owner | Run Purge message knowledge | Message-derived chunks are deleted while canonical documents remain. |
-| K-09 | Maintainer | Remove/invalid Groq key or simulate timeout | Leone sends the safe fallback and the worker stays available. |
+| K-09 | Maintainer | Remove/invalid Gemini AI Studio key or simulate timeout | Leone sends the safe fallback and the worker stays available. |
 | K-10 | Maintainer | Restart the Render worker | Gateway reconnects, slash commands/admin API remain unaffected, and no duplicate replies occur. |
 
 ## Acceptance record
 
-- Build/test baseline: 54 automated tests passing and Vite production build passing.
+- Build/test baseline: 71 automated tests passing and Vite production build passing.
 - Production URL: `https://bots.leonorekingdom.xyz`
 - Production deployment: `dpl_4toHu9Kkt2qqHe7HWdTtRpZ9A3tw`
 - Discord application: `1532088865035124946`

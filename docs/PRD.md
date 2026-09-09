@@ -19,7 +19,7 @@ Evolve Leone from a local, single-process Discord bot into a small community pla
 2. **Web application:** Discord-authenticated member family trees and role-authorized administration.
 3. **Supabase PostgreSQL:** durable relationship, configuration, schedule, session, and audit data.
 
-The approved implementation direction is **React + Vite**, an **Express.js API**, and **Supabase PostgreSQL**, deployed free-first on **Vercel** with **Cloudflare DNS**. Slash commands, buttons, OAuth, admin APIs, health checks, and scheduler dispatch remain on Vercel. Interactive chat is isolated in a Render Background Worker using Discord Gateway events and Groq-backed retrieval-augmented generation (RAG).
+The approved implementation direction is **React + Vite**, an **Express.js API**, and **Supabase PostgreSQL**, deployed free-first on **Vercel** with **Cloudflare DNS**. Slash commands, buttons, OAuth, admin APIs, health checks, and scheduler dispatch remain on Vercel. Interactive chat is isolated in a Render Gateway worker using Discord Gateway events and Gemini AI Studio-backed retrieval-augmented generation (RAG). Supabase Cron can call the worker's `/wake` endpoint every ten minutes while the beta uses Render Free web hosting.
 
 The next release must preserve the current deterministic permission and privacy model. Relationship lore never grants Discord authority, and no administrative action may rely on an LLM, hidden Discord command, or client-side web check.
 
@@ -65,8 +65,8 @@ Current constraints:
 ### G-07 — Interactive public chatbot
 
 Add a bounded Leone chat experience for direct mentions in owner-approved public
-channels and DMs. The first provider is Groq through its OpenAI-compatible API.
-The worker uses RAG over canonical server documents and new redacted messages
+channels and DMs. The first provider is Gemini AI Studio through the Gemini
+Developer API. The worker uses RAG over canonical server documents and new redacted messages
 from approved channels; it performs no historical backfill and never executes
 moderation or server-administration tools.
 
@@ -440,13 +440,13 @@ Do not move every existing file before delivering the PostgreSQL repository. Ref
 | Frontend and Express API | Vercel Hobby | Native support for Vite, zero-configuration Express deployment, previews, TLS, rollback, and custom subdomains. | Serverless execution is not an always-on process; Hobby limits and non-commercial eligibility must be rechecked before launch. |
 | PostgreSQL and scheduler | Supabase Free | Full PostgreSQL, serverless transaction pooler, SQL migrations, Vault, and `pg_cron`-based scheduling. | 500 MB database, no automatic backups, low-activity pausing, and no Leone-controlled SLA. |
 | DNS/domain | Cloudflare DNS | Keeps the existing domain provider workflow and gives an upgrade path for proxy/WAF controls. | Vercel domain-verification records must remain DNS-only; proxy behavior must be tested before enabling it. |
-| Gateway compute | Paid Render background worker | Correct service type for a continuous outbound Gateway connection and bounded chat worker. | Background workers are not a Free service type; this adds cost and another deployment. |
+| Gateway compute | Render Free web service + Supabase Cron keepalive (beta) | Keeps the current Gateway worker deployment at $0 while the bot is small. | Free web services sleep after 15 minutes without inbound traffic; Cron keepalive is best-effort and not an uptime guarantee. A paid Render background worker is the reliability upgrade. |
 
 Vercel deploys an Express application as one Vercel Function, allows a Vite project to define Functions in the root `api` directory, and supports custom subdomains. Supabase recommends the Supavisor transaction-mode pooler on port `6543` for temporary serverless connections; prepared statements must be disabled in that mode. Use the Supabase CLI for tracked migrations and a direct connection where available for `pg_dump` and administrative tools.
 
 ### Why Render is separate from Vercel
 
-Render Free web services currently spin down after 15 minutes without incoming HTTP or WebSocket traffic and use an ephemeral filesystem. A Discord Gateway connection is outbound from Leone, so the chatbot must use a Background Worker rather than a web service. Vercel remains the HTTP/admin runtime; Render is the worker runtime.
+Render Free web services currently spin down after 15 minutes without incoming HTTP or WebSocket traffic and use an ephemeral filesystem. The beta keeps the existing `type: web` worker warm with a Supabase Cron request to `/wake`; this can still be interrupted and should not be treated as guaranteed availability. A paid Render Background Worker is the correct always-on upgrade. Vercel remains the HTTP/admin runtime; Render is the worker runtime.
 
 Do not use Render Free Postgres for Leone's durable data; its Free database currently expires after 30 days and has no backups.
 

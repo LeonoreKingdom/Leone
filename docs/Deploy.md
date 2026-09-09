@@ -6,7 +6,8 @@ This runbook targets the free-first beta topology:
 - Supabase Free PostgreSQL in `ap-southeast-1`
 - Cloudflare DNS for `bots.leonorekingdom.xyz` in DNS-only mode
 - Discord guild commands and outgoing interaction webhooks
-- Render Background Worker for interactive chatbot Gateway events
+- Render Free web service for interactive chatbot Gateway events, kept warm by
+  a Supabase Cron `/wake` request in the beta
 
 Free plans are appropriate for development and limited beta, not a guarantee of
 always-on production availability or managed backups.
@@ -39,7 +40,7 @@ npm.cmd run build
 git diff --check
 ```
 
-Expected baseline: 54 tests pass, Vite builds `public/`, and diff check has no
+Expected baseline: 71 tests pass, Vite builds `public/`, and diff check has no
 errors. Line-ending warnings on Windows are informational.
 
 Never deploy `.env`, `data/`, database dumps, or generated secret files. Keep the
@@ -64,6 +65,8 @@ Apply migrations in filename order:
 202608030003_runtime_role_and_indexes.sql
 202608120001_moderation_and_server_admin.sql
 202608130001_chatbot_knowledge.sql
+202608130002_chatbot_worker_heartbeat.sql
+leone_render_keepalive (applied through Supabase; local file: `202609090001_leone_render_keepalive.sql`)
 ```
 
 Post-migration checks:
@@ -163,10 +166,11 @@ Sensitive environment variables for Production and Preview:
 | `GREETINGS_SCHEDULER_ENABLED` | Yes | Keep `false` until UAT opt-in |
 | `SESSION_TTL_HOURS` | Yes | Recommended `24` |
 | `TMDB_API_KEY` or `TMDB_READ_ACCESS_TOKEN` | Movie feature | Store only one if possible; Read Access Token is preferred |
-| `GROQ_API_KEY` | Chatbot | Server-only Groq key; never expose to Vite |
-| `GROQ_MODEL` | Chatbot | Model currently available in the Groq account |
-| `GROQ_MAX_OUTPUT_TOKENS`, `GROQ_REQUEST_TIMEOUT_MS` | Chatbot | Recommended `600` and `12000` |
-| `CHATBOT_DAILY_REQUEST_LIMIT`, `CHATBOT_PER_USER_COOLDOWN_SECONDS` | Chatbot | Recommended `500` and `15` |
+| `LLM_PROVIDER` | Chatbot | Set `gemini`; `groq` remains a compatibility option |
+| `GEMINI_API_KEY` | Chatbot | Server-only key created in Google AI Studio; never expose to Vite |
+| `GEMINI_MODEL` | Chatbot | Account-available Gemini Flash model, e.g. `gemini-3.8-flash` |
+| `GEMINI_MAX_OUTPUT_TOKENS`, `GEMINI_REQUEST_TIMEOUT_MS` | Chatbot | Recommended `600` and `12000` |
+| `CHATBOT_DAILY_REQUEST_LIMIT`, `CHATBOT_PER_USER_COOLDOWN_SECONDS` | Chatbot | Free-use guardrail: default/cap `100` successful replies per UTC day and `15` seconds |
 | `SERVER_STATS_API_KEY` | Optional | 16+ character server-side key for website calls to `/api/server-stats`; never expose to Vite |
 | `STATS_FEATURED_USER_IDS` | Optional | Comma-separated public Discord user IDs to show in admin/website profile cards |
 | `STATS_CITIZEN_ROLE_NAME`, `STATS_ADMIN_ROLE_NAME`, `STATS_MODERATOR_ROLE_NAME` | Optional | Role names for Citizen counts and Admin/Moderator profile selection; defaults are `Citizen`, `Admin`, and `Moderator` |
@@ -180,6 +184,12 @@ Sensitive environment variables for Production and Preview:
 
 Never prefix a server secret with `VITE_`; Vite-prefixed variables enter the
 browser bundle.
+
+The Gateway worker needs `GEMINI_API_KEY` in Render. The Admin → Chatbot
+readiness card is served by Vercel and reads its own server environment, so add
+the same key to Vercel Production/Preview if you want that card to show
+**Ready**. Both copies are server-only; the key is never sent to the browser or
+stored in Supabase.
 
 ### Live server statistics
 
@@ -210,10 +220,64 @@ Build command: npm ci
 Start command: node src/chat-worker.js
 ```
 
-Set the Discord token, guild ID, `DATABASE_URL`, Groq variables, and chatbot
-limits in Render. Vercel remains responsible for HTTP interactions, OAuth,
-admin API, health checks, and scheduler dispatch. Render Free web services are
-not a reliable always-on Gateway host; use the Background Worker service type.
+Set the Discord token, guild ID, `DATABASE_URL`, `LLM_PROVIDER=gemini`, Gemini
+variables, and chatbot limits in Render. Keep `GEMINI_API_KEY` server-side; do
+not put it in React/Vite or Supabase client storage. The worker enforces the
+configured `CHATBOT_DAILY_REQUEST_LIMIT` as a hard cap, including when an old
+guild row still contains a larger or unlimited value. Google AI Studio's free
+tier is account/project specific, so confirm the active quota in AI Studio and
+do not attach billing to the project used for this beta. Vercel remains
+responsible for HTTP interactions, OAuth, admin API, health checks, and
+scheduler dispatch. Render Free web services sleep after inactivity, and a
+free Background Worker is not available; the current `type: web` worker can be
+kept warm with the Supabase Cron setup below, but this is best-effort rather
+than an uptime guarantee.
+
+### Supabase Cron keepalive for the Render free web service
+
+The migration `leone_render_keepalive` defines an internal function that reads
+the Render URL from Supabase Vault and calls the worker's lightweight `/wake`
+endpoint. It deliberately does not create a scheduled job until the secret is
+present, so a missing deployment URL cannot produce failing requests.
+
+After the Render service is deployed, use its exact public URL (for example
+`https://<service>.onrender.com/wake`) and run the following in the Supabase
+SQL editor using a role allowed to manage Vault/Cron. Never put the URL or any
+token in git:
+
+```sql
+select vault.create_secret(
+  'https://<your-render-service>.onrender.com/wake',
+  'leone_render_wake_url'
+);
+
+select cron.schedule(
+  'leone-render-keepalive',
+  '*/10 * * * *',
+  'select public.invoke_leone_render_keepalive();'
+);
+```
+
+Ten minutes leaves margin below Render's fifteen-minute inactivity window. A
+fifteen-minute schedule is possible but can race the sleep threshold. Verify
+the job and recent execution without selecting secret values:
+
+```sql
+select jobname, schedule, active, command
+from cron.job
+where jobname = 'leone-render-keepalive';
+
+select jobid, status, return_message, start_time, end_time
+from cron.job_run_details
+where jobid = (select jobid from cron.job where jobname = 'leone-render-keepalive')
+order by start_time desc
+limit 10;
+```
+
+If the Render URL changes, replace the Vault secret and keep the same job name.
+To roll back, unschedule only this job with
+`select cron.unschedule('leone-render-keepalive');`; the existing greetings and
+retention jobs are independent.
 
 Deployment sequence:
 

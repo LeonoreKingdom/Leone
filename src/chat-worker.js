@@ -5,6 +5,7 @@ const { Client, Events, GatewayIntentBits, Partials, ActivityType } = require('d
 const { getConfig, requireConfig } = require('./config');
 const { getPool, closePool } = require('./db/pool');
 const { createGroqClient } = require('./features/chatbot/groq-client');
+const { createGeminiClient } = require('./features/chatbot/gemini-client');
 const { createChatbotService, isBlockedChannel } = require('./features/chatbot/chatbot-service');
 const { KnowledgeRepository } = require('./features/chatbot/knowledge-repository');
 const { redactText } = require('./features/chatbot/redaction');
@@ -15,8 +16,8 @@ const config = getConfig();
 requireConfig('DISCORD_TOKEN', 'DATABASE_URL');
 const pool = getPool();
 const repository = new KnowledgeRepository(pool);
-const groqClient = createGroqClient({ config });
-const chatbot = createChatbotService({ config, repository, groqClient });
+const llmClient = config.LLM_PROVIDER === 'gemini' ? createGeminiClient({ config }) : createGroqClient({ config });
+const chatbot = createChatbotService({ config, repository, llmClient });
 const statsSnapshotRepository = config.serverStatsGatewayEnabled
   ? new ServerStatsSnapshotRepository(pool)
   : null;
@@ -51,7 +52,9 @@ const httpServer = http.createServer((request, response) => {
     return;
   }
   response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-  response.end(JSON.stringify({ status: 'ok', discordReady, service: 'leone-chat-worker', timestamp: new Date().toISOString() }));
+  const llmReady = config.LLM_PROVIDER === 'gemini' ? Boolean(config.GEMINI_API_KEY) : Boolean(config.GROQ_API_KEY);
+  const llmModel = config.LLM_PROVIDER === 'gemini' ? config.GEMINI_MODEL : config.GROQ_MODEL;
+  response.end(JSON.stringify({ status: 'ok', discordReady, llmProvider: config.LLM_PROVIDER, llmReady, llmModel, service: 'leone-chat-worker', timestamp: new Date().toISOString() }));
 });
 httpServer.listen(httpPort, '0.0.0.0', () => console.log(`Leone chatbot health endpoint listening on ${httpPort}`));
 
@@ -130,7 +133,8 @@ for (const event of [Events.VoiceStateUpdate, Events.PresenceUpdate, Events.Guil
 client.on(Events.MessageCreate, (message) => enqueue(async () => {
   if (!message || message.author?.bot || message.webhookId) return;
   const guildId = message.guildId ?? config.DISCORD_GUILD_ID;
-  const settings = await repository.getSettings(guildId, { cooldown: config.CHATBOT_PER_USER_COOLDOWN_SECONDS, dailyLimit: config.CHATBOT_DAILY_REQUEST_LIMIT, model: config.GROQ_MODEL });
+  const defaultModel = config.LLM_PROVIDER === 'gemini' ? config.GEMINI_MODEL : config.GROQ_MODEL;
+  const settings = await repository.getSettings(guildId, { cooldown: config.CHATBOT_PER_USER_COOLDOWN_SECONDS, dailyLimit: config.CHATBOT_DAILY_REQUEST_LIMIT, model: defaultModel });
   if (!settings.enabled) return;
   if (message.guildId && settings.channel_ids?.includes(message.channelId) && !message.channel?.isThread?.() && !isBlockedChannel(message)) {
     const text = redactText(message.content, { maxLength: 4000 });

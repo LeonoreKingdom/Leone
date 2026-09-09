@@ -38,6 +38,16 @@ const snowflake = z.string().regex(/^\d+$/);
 const uuid = z.string().uuid();
 const capabilityEnum = z.enum(ALL_CAPABILITIES);
 
+function chatbotModelDefault(config) {
+  return config.LLM_PROVIDER === 'gemini' ? config.GEMINI_MODEL : config.GROQ_MODEL;
+}
+
+function chatbotDailyLimit(config, value) {
+  const requested = Math.max(Number(value ?? config.CHATBOT_DAILY_REQUEST_LIMIT ?? 0), 0);
+  const cap = Number(config.CHATBOT_DAILY_REQUEST_LIMIT ?? 0);
+  return cap > 0 && config.LLM_PROVIDER === 'gemini' ? Math.min(requested, cap) : requested;
+}
+
 function requireModerationCapability(request, response, next) {
   const action = request.body?.action;
   const capability = {
@@ -316,19 +326,20 @@ function createApiRouter({
 
   router.get('/admin/chatbot/settings', requireCapability('chatbot.manage'), asyncRoute(async (request, response) => {
     const [settings, bundle] = await Promise.all([
-      knowledge.getSettings(request.auth.guildId, { cooldown: config.CHATBOT_PER_USER_COOLDOWN_SECONDS, dailyLimit: config.CHATBOT_DAILY_REQUEST_LIMIT, model: config.GROQ_MODEL }),
+      knowledge.getSettings(request.auth.guildId, { cooldown: config.CHATBOT_PER_USER_COOLDOWN_SECONDS, dailyLimit: config.CHATBOT_DAILY_REQUEST_LIMIT, model: chatbotModelDefault(config) }),
       restClient.getGuildBundle(request.auth.guildId, { refresh: true }),
     ]);
     const parentNames = new Map(bundle.channels.filter((channel) => channel.type === 4).map((item) => [item.id, item.name]));
     response.json({
-      settings: { ...settings, channelIds: settings.channel_ids ?? [], triggerMode: settings.trigger_mode, retentionDays: settings.retention_days, perUserCooldownSeconds: settings.per_user_cooldown_seconds, dailyRequestLimit: settings.daily_request_limit },
+      settings: { ...settings, channelIds: settings.channel_ids ?? [], triggerMode: settings.trigger_mode, retentionDays: settings.retention_days, perUserCooldownSeconds: settings.per_user_cooldown_seconds, dailyRequestLimit: chatbotDailyLimit(config, settings.daily_request_limit), dailyRequestLimitCap: config.LLM_PROVIDER === 'gemini' ? Number(config.CHATBOT_DAILY_REQUEST_LIMIT) : null },
       channels: bundle.channels.filter((channel) => isPublicChannel(channel, parentNames)).map((channel) => ({ id: channel.id, name: channel.name, type: channel.type, parentId: channel.parent_id ?? null })),
-      readiness: { groq: Boolean(config.GROQ_API_KEY), gateway: Boolean(config.DISCORD_TOKEN), database: true },
+      provider: config.LLM_PROVIDER,
+      readiness: { llm: config.LLM_PROVIDER === 'gemini' ? Boolean(config.GEMINI_API_KEY) : Boolean(config.GROQ_API_KEY), gemini: Boolean(config.GEMINI_API_KEY), groq: Boolean(config.GROQ_API_KEY), gateway: Boolean(config.DISCORD_TOKEN), database: true },
     });
   }));
 
   router.patch('/admin/chatbot/settings', requireCapability('chatbot.manage'), csrf, asyncRoute(async (request, response) => {
-    const current = await knowledge.getSettings(request.auth.guildId, { cooldown: config.CHATBOT_PER_USER_COOLDOWN_SECONDS, dailyLimit: config.CHATBOT_DAILY_REQUEST_LIMIT, model: config.GROQ_MODEL });
+    const current = await knowledge.getSettings(request.auth.guildId, { cooldown: config.CHATBOT_PER_USER_COOLDOWN_SECONDS, dailyLimit: config.CHATBOT_DAILY_REQUEST_LIMIT, model: chatbotModelDefault(config) });
     const input = z.object({
       enabled: z.boolean().optional(),
       channelIds: z.array(snowflake).max(100).optional(),
@@ -351,8 +362,8 @@ function createApiRouter({
       triggerMode: input.triggerMode ?? current.trigger_mode ?? 'mention_dm',
       retentionDays: input.retentionDays ?? current.retention_days ?? 30,
       perUserCooldownSeconds: input.perUserCooldownSeconds ?? current.per_user_cooldown_seconds ?? config.CHATBOT_PER_USER_COOLDOWN_SECONDS,
-      dailyRequestLimit: input.dailyRequestLimit ?? current.daily_request_limit ?? config.CHATBOT_DAILY_REQUEST_LIMIT,
-      model: input.model === undefined ? (current.model ?? config.GROQ_MODEL) : input.model,
+      dailyRequestLimit: chatbotDailyLimit(config, input.dailyRequestLimit ?? current.daily_request_limit ?? config.CHATBOT_DAILY_REQUEST_LIMIT),
+      model: input.model === undefined ? (current.model ?? chatbotModelDefault(config)) : input.model,
     });
     await audit.record({ guildId: request.auth.guildId, actorUserId: request.auth.userId, action: 'chatbot.settings_update', targetCategory: 'chatbot', metadata: { enabled: saved.enabled, channelCount: saved.channel_ids.length, triggerMode: saved.trigger_mode } });
     response.json(saved);

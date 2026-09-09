@@ -18,15 +18,17 @@ services:
         value: "true"
       - key: DATABASE_URL
         sync: false
-      - key: GROQ_API_KEY
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: GEMINI_API_KEY
         sync: false
-      - key: GROQ_MODEL
-        sync: false
-      - key: GROQ_MAX_OUTPUT_TOKENS
+      - key: GEMINI_MODEL
+        value: gemini-3.8-flash
+      - key: GEMINI_MAX_OUTPUT_TOKENS
         value: "600"
-      - key: GROQ_REQUEST_TIMEOUT_MS
+      - key: GEMINI_REQUEST_TIMEOUT_MS
         value: "12000"
       - key: CHATBOT_DAILY_REQUEST_LIMIT
-        value: "500"
+        value: "100"
       - key: CHATBOT_PER_USER_COOLDOWN_SECONDS
         value: "15"
