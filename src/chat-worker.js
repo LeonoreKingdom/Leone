@@ -8,14 +8,17 @@ const { createGroqClient } = require('./features/chatbot/groq-client');
 const { createGeminiClient } = require('./features/chatbot/gemini-client');
 const { createChatbotService, isBlockedChannel } = require('./features/chatbot/chatbot-service');
 const { KnowledgeRepository } = require('./features/chatbot/knowledge-repository');
+const { reindexCanonical } = require('./features/chatbot/knowledge-indexer');
 const { redactText } = require('./features/chatbot/redaction');
 const { buildServerStatsFromGatewayGuild } = require('./features/kingdom/server-stats/service');
 const { ServerStatsSnapshotRepository } = require('./features/kingdom/server-stats/snapshot-repository');
+const { DiscordRestClient } = require('./adapters/discord/rest-client');
 
 const config = getConfig();
 requireConfig('DISCORD_TOKEN', 'DATABASE_URL');
 const pool = getPool();
 const repository = new KnowledgeRepository(pool);
+const discordRestClient = new DiscordRestClient({ token: config.DISCORD_TOKEN });
 const llmClient = config.LLM_PROVIDER === 'gemini' ? createGeminiClient({ config }) : createGroqClient({ config });
 const chatbot = createChatbotService({ config, repository, llmClient });
 const statsSnapshotRepository = config.serverStatsGatewayEnabled
@@ -113,10 +116,30 @@ function scheduleStatsSnapshot(delayMs = 1_000) {
   statsRefreshTimer.unref?.();
 }
 
+async function ensureCanonicalKnowledge() {
+  const settings = await repository.getSettings(config.DISCORD_GUILD_ID, {
+    cooldown: config.CHATBOT_PER_USER_COOLDOWN_SECONDS,
+    dailyLimit: config.CHATBOT_DAILY_REQUEST_LIMIT,
+    model: config.LLM_PROVIDER === 'gemini' ? config.GEMINI_MODEL : config.GROQ_MODEL,
+  });
+  if (!settings.enabled) return;
+
+  const status = await repository.status(config.DISCORD_GUILD_ID);
+  if (Number(status.documents) > 0 && Number(status.canonical_chunks) > 0) return;
+
+  const result = await reindexCanonical({
+    guildId: config.DISCORD_GUILD_ID,
+    restClient: discordRestClient,
+    repository,
+  });
+  console.log('chatbot.canonical_reindex_succeeded', result);
+}
+
 client.once(Events.ClientReady, (readyClient) => {
   discordReady = true;
   console.log(`Leone chatbot worker logged in as ${readyClient.user.tag}`);
   repository.touchWorker(config.DISCORD_GUILD_ID).catch((error) => console.error('chatbot.worker_heartbeat_failed', error));
+  ensureCanonicalKnowledge().catch((error) => console.error('chatbot.canonical_reindex_failed', error));
   setInterval(() => repository.touchWorker(config.DISCORD_GUILD_ID).catch((error) => console.error('chatbot.worker_heartbeat_failed', error)), 60_000).unref();
   readyClient.user.setPresence({ activities: [{ name: 'the Kingdom', type: ActivityType.Listening }], status: 'online' });
   if (statsSnapshotRepository) {
