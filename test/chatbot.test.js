@@ -56,8 +56,8 @@ test('chatbot uses a fallback model, shows typing, and delivers the answer', asy
     reply: async (payload) => { sent = payload; },
   };
   const primary = { chat: async () => { const error = new Error('high demand'); error.code = 'GEMINI_TEMPORARILY_UNAVAILABLE'; error.status = 503; throw error; } };
-  const fallback = { chat: async () => ({ content: 'Leonore’s Kingdom adalah rumah bagi orang berbakat.', model: 'gemini-2.5-flash-lite', usage: { prompt_tokens: 4, completion_tokens: 8 } }) };
-  const service = createChatbotService({ config: { LLM_PROVIDER: 'gemini', GEMINI_MODEL: 'gemini-3.8-flash', GEMINI_FALLBACK_MODEL: 'gemini-2.5-flash-lite', CHATBOT_DAILY_REQUEST_LIMIT: 100, CHATBOT_PER_USER_COOLDOWN_SECONDS: 0, CHATBOT_TOPIC_COOLDOWN_SECONDS: 45, CHATBOT_TOPIC_MATCH_MIN_RANK: 0.02 }, repository, llmClient: primary, fallbackLlmClient: fallback, logger: { warn: () => {}, debug: () => {}, error: () => {} } });
+  const fallback = { chat: async () => ({ content: 'Leonore’s Kingdom adalah rumah bagi orang berbakat.', model: 'gemini-3.5-flash-lite', usage: { prompt_tokens: 4, completion_tokens: 8 } }) };
+  const service = createChatbotService({ config: { LLM_PROVIDER: 'gemini', GEMINI_MODEL: 'gemini-3.8-flash', GEMINI_FALLBACK_MODEL: 'gemini-3.5-flash-lite', CHATBOT_DAILY_REQUEST_LIMIT: 100, CHATBOT_PER_USER_COOLDOWN_SECONDS: 0, CHATBOT_TOPIC_COOLDOWN_SECONDS: 45, CHATBOT_TOPIC_MATCH_MIN_RANK: 0.02 }, repository, llmClient: primary, fallbackLlmClient: fallback, logger: { warn: () => {}, debug: () => {}, error: () => {} } });
   const result = await service.handleMessage(message, { botUserId: '9' });
   assert.equal(result.fallbackUsed, true);
   assert.match(sent.content, /rumah bagi orang berbakat/);
@@ -70,7 +70,7 @@ test('chatbot always attempts a visible fallback when both models fail', async (
   const repository = { getSettings: async () => ({ enabled: true, channel_ids: ['10'], trigger_mode: 'mention_dm', per_user_cooldown_seconds: 0, daily_request_limit: 10, model: 'gemini-3.8-flash' }), usageCount: async () => 0, search: async () => [], recordUsage: async () => {} };
   const message = { guildId: '1', channelId: '10', content: '<@9> jelaskan fokus dalam bahasa Indonesia', author: { id: '2', bot: false }, webhookId: null, mentions: { has: () => true }, channel: { name: 'general', sendTyping: async () => {} }, reply: async (payload) => { sent = payload; } };
   const unavailable = { chat: async () => { const error = new Error('high demand'); error.code = 'GEMINI_TEMPORARILY_UNAVAILABLE'; error.status = 503; throw error; } };
-  const service = createChatbotService({ config: { LLM_PROVIDER: 'gemini', GEMINI_MODEL: 'gemini-3.8-flash', GEMINI_FALLBACK_MODEL: 'gemini-2.5-flash-lite', CHATBOT_DAILY_REQUEST_LIMIT: 100, CHATBOT_PER_USER_COOLDOWN_SECONDS: 0 }, repository, llmClient: unavailable, fallbackLlmClient: unavailable, logger: { warn: () => {}, debug: () => {}, error: () => {} } });
+  const service = createChatbotService({ config: { LLM_PROVIDER: 'gemini', GEMINI_MODEL: 'gemini-3.8-flash', GEMINI_FALLBACK_MODEL: 'gemini-3.5-flash-lite', CHATBOT_DAILY_REQUEST_LIMIT: 100, CHATBOT_PER_USER_COOLDOWN_SECONDS: 0 }, repository, llmClient: unavailable, fallbackLlmClient: unavailable, logger: { warn: () => {}, debug: () => {}, error: () => {} } });
   const result = await service.handleMessage(message, { botUserId: '9' });
   assert.equal(result.fallback, true);
   assert.match(sent.content, /Leone sedang sibuk/);

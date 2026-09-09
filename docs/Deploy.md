@@ -66,6 +66,7 @@ Apply migrations in filename order:
 202608120001_moderation_and_server_admin.sql
 202608130001_chatbot_knowledge.sql
 202608130002_chatbot_worker_heartbeat.sql
+20260909190248_chatbot_smart_response.sql
 leone_render_keepalive (applied through Supabase; local file: `202609090001_leone_render_keepalive.sql`)
 ```
 
@@ -169,10 +170,10 @@ Sensitive environment variables for Production and Preview:
 | `LLM_PROVIDER` | Chatbot | Set `gemini`; `groq` remains a compatibility option |
 | `GEMINI_API_KEY` | Chatbot | Server-only key created in Google AI Studio; never expose to Vite |
 | `GEMINI_MODEL` | Chatbot | Account-available Gemini Flash model, e.g. `gemini-3.8-flash` |
-| `GEMINI_FALLBACK_MODEL` | Chatbot | Secondary account-available model used for transient high-demand/rate-limit failures; default `gemini-2.5-flash-lite` |
+| `GEMINI_FALLBACK_MODEL` | Chatbot | Secondary account-available model used for transient high-demand/rate-limit failures; default `gemini-3.5-flash-lite` |
 | `GEMINI_MAX_OUTPUT_TOKENS`, `GEMINI_REQUEST_TIMEOUT_MS` | Chatbot | Recommended `600` and `12000` |
-| `CHATBOT_DAILY_REQUEST_LIMIT`, `CHATBOT_PER_USER_COOLDOWN_SECONDS` | Chatbot | Free-use guardrail: default/cap `100` successful replies per UTC day and `15` seconds |
-| `CHATBOT_TOPIC_MATCH_MIN_RANK`, `CHATBOT_TOPIC_COOLDOWN_SECONDS` | Chatbot | Smart-response threshold and per-channel cooldown; recommended `0.02` and `45` seconds |
+| `CHATBOT_DAILY_REQUEST_LIMIT`, `CHATBOT_PER_USER_COOLDOWN_SECONDS` | Chatbot | Free-use guardrail: default/cap `300` successful replies per UTC day and `8` seconds |
+| `CHATBOT_TOPIC_MATCH_MIN_RANK`, `CHATBOT_TOPIC_COOLDOWN_SECONDS` | Chatbot | Smart-response threshold and per-channel cooldown; recommended `0.02` and `30` seconds |
 | `SERVER_STATS_API_KEY` | Optional | 16+ character server-side key for website calls to `/api/server-stats`; never expose to Vite |
 | `STATS_FEATURED_USER_IDS` | Optional | Comma-separated public Discord user IDs to show in admin/website profile cards |
 | `STATS_CITIZEN_ROLE_NAME`, `STATS_ADMIN_ROLE_NAME`, `STATS_MODERATOR_ROLE_NAME` | Optional | Role names for Citizen counts and Admin/Moderator profile selection; defaults are `Citizen`, `Admin`, and `Moderator` |
@@ -227,7 +228,7 @@ variables (including the fallback model), and chatbot limits in Render. Keep `GE
 not put it in React/Vite or Supabase client storage. The worker enforces the
 configured `CHATBOT_DAILY_REQUEST_LIMIT` as a hard cap, including when an old
 guild row still contains a larger or unlimited value. Google AI Studio's free
-tier is account/project specific, so confirm the active quota in AI Studio and
+tier is account/project specific, so confirm the active RPM/RPD/TPM quota in AI Studio and
 do not attach billing to the project used for this beta. Vercel remains
 responsible for HTTP interactions, OAuth, admin API, health checks, and
 scheduler dispatch. Render Free web services sleep after inactivity, and a
@@ -240,7 +241,7 @@ response (a direct “Leone” call or a strong match to canonical public knowle
 with an additional channel cooldown), and auto-response. The worker sends a
 Discord typing indicator while it retrieves context and calls Gemini. If the
 primary model receives a transient high-demand, timeout, or rate-limit error,
-it tries `GEMINI_FALLBACK_MODEL` before returning a consistent safe fallback.
+it tries `GEMINI_FALLBACK_MODEL` (default `gemini-3.5-flash-lite`) before returning a consistent safe fallback.
 Generated replies disable Discord mentions; the model cannot execute admin or
 moderation actions.
 

@@ -59,7 +59,7 @@ const httpServer = http.createServer((request, response) => {
   const llmReady = config.LLM_PROVIDER === 'gemini' ? Boolean(config.GEMINI_API_KEY) : Boolean(config.GROQ_API_KEY);
   const llmModel = config.LLM_PROVIDER === 'gemini' ? config.GEMINI_MODEL : config.GROQ_MODEL;
   const llmFallbackModel = config.LLM_PROVIDER === 'gemini' ? config.GEMINI_FALLBACK_MODEL : null;
-  response.end(JSON.stringify({ status: 'ok', discordReady, llmProvider: config.LLM_PROVIDER, llmReady, llmModel, llmFallbackModel, service: 'leone-chat-worker', timestamp: new Date().toISOString() }));
+  response.end(JSON.stringify({ status: 'ok', discordReady, llmProvider: config.LLM_PROVIDER, llmReady, llmModel, llmFallbackModel, chatbotDailyLimitCap: config.CHATBOT_DAILY_REQUEST_LIMIT, chatbotPerUserCooldownSeconds: config.CHATBOT_PER_USER_COOLDOWN_SECONDS, chatbotTopicCooldownSeconds: config.CHATBOT_TOPIC_COOLDOWN_SECONDS, service: 'leone-chat-worker', timestamp: new Date().toISOString() }));
 });
 httpServer.listen(httpPort, '0.0.0.0', () => console.log(`Leone chatbot health endpoint listening on ${httpPort}`));
 
