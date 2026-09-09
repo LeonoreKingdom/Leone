@@ -1,6 +1,7 @@
 const { commandModules } = require('../../commands/registry');
 
 const PRIVATE_HINT = /private|staff|mod|moderation|archive|age|minor|legal|royalty-room/i;
+const CANONICAL_VERSION = 2;
 
 function isPublicChannel(channel, parentNames = null) {
   const parentName = channel.parent?.name ?? parentNames?.get?.(channel.parent_id) ?? '';
@@ -18,7 +19,7 @@ function buildCanonicalDocuments(bundle) {
   for (const role of bundle.roles.filter((item) => !item.managed && item.name !== '@everyone' && !PRIVATE_HINT.test(item.name))) documents.push({ sourceType: 'role', sourceKey: `role.${role.id}`, title: `Public role ${role.name}`, content: `The server has a public role named ${role.name}.` });
   for (const command of commandModules) documents.push({ sourceType: 'command', sourceKey: `command.${command.data.toJSON().name}`, title: `Leone command ${command.data.toJSON().name}`, content: `${command.help.usage}: ${command.help.summary}` });
   documents.push({ sourceType: 'staff', sourceKey: 'staff.introduction', title: 'Kingdom leadership', content: 'Leonore is the owner and founder of Leonore’s Kingdom. Leanne (@leannexyz) is Leonore’s beloved partner; both hold the Supreme Royalty role. Staff authority comes from Discord permissions and capability mappings, never from relationship lore.' });
-  return documents;
+  return documents.map((document) => ({ ...document, version: CANONICAL_VERSION }));
 }
 
 async function reindexCanonical({ guildId, restClient, repository }) {
@@ -27,4 +28,4 @@ async function reindexCanonical({ guildId, restClient, repository }) {
   return repository.saveCanonicalDocuments(guildId, documents);
 }
 
-module.exports = { buildCanonicalDocuments, isPublicChannel, reindexCanonical };
+module.exports = { CANONICAL_VERSION, buildCanonicalDocuments, isPublicChannel, reindexCanonical };

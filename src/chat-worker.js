@@ -8,7 +8,7 @@ const { createGroqClient } = require('./features/chatbot/groq-client');
 const { createGeminiClient } = require('./features/chatbot/gemini-client');
 const { createChatbotService, isBlockedChannel } = require('./features/chatbot/chatbot-service');
 const { KnowledgeRepository } = require('./features/chatbot/knowledge-repository');
-const { reindexCanonical } = require('./features/chatbot/knowledge-indexer');
+const { CANONICAL_VERSION, reindexCanonical } = require('./features/chatbot/knowledge-indexer');
 const { redactText } = require('./features/chatbot/redaction');
 const { buildServerStatsFromGatewayGuild } = require('./features/kingdom/server-stats/service');
 const { ServerStatsSnapshotRepository } = require('./features/kingdom/server-stats/snapshot-repository');
@@ -125,7 +125,7 @@ async function ensureCanonicalKnowledge() {
   if (!settings.enabled) return;
 
   const status = await repository.status(config.DISCORD_GUILD_ID);
-  if (Number(status.documents) > 0 && Number(status.canonical_chunks) > 0) return;
+  if (Number(status.documents) > 0 && Number(status.canonical_chunks) > 0 && Number(status.canonical_version) >= CANONICAL_VERSION) return;
 
   const result = await reindexCanonical({
     guildId: config.DISCORD_GUILD_ID,

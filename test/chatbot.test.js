@@ -81,6 +81,7 @@ test('Gemini client rejects unsupported tool calls and maps rate limits', async 
 test('canonical indexer excludes private-looking channels and includes server identity', () => {
   const docs = buildCanonicalDocuments({ guild: { name: 'Kingdom' }, channels: [{ id: '1', type: 0, name: 'general', topic: 'Welcome' }, { id: '2', type: 0, name: 'staff-private' }], roles: [{ id: '3', name: 'Citizen', managed: false }, { id: '4', name: 'Bot', managed: true }] });
   assert.ok(docs.some((doc) => doc.sourceKey === 'server.identity'));
+  assert.ok(docs.every((doc) => doc.version === 2));
   assert.ok(docs.some((doc) => doc.sourceKey === 'channel.1'));
   assert.ok(!docs.some((doc) => doc.sourceKey === 'channel.2'));
   assert.ok(!docs.some((doc) => doc.sourceKey === 'role.4'));

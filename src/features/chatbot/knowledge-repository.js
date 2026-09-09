@@ -83,7 +83,7 @@ class KnowledgeRepository {
   }
 
   async status(guildId) {
-    const { rows } = await this.pool.query(`select (select count(*)::int from knowledge_documents where guild_id = $1 and enabled) as documents, (select count(*)::int from knowledge_chunks where guild_id = $1 and source_type = 'canonical') as canonical_chunks, (select count(*)::int from knowledge_chunks where guild_id = $1 and source_type = 'message' and (expires_at is null or expires_at > now())) as message_chunks, (select max(created_at) from knowledge_chunks where guild_id = $1) as last_ingestion, (select max(last_indexed_at) from chatbot_settings where guild_id = $1) as last_indexed, (select max(worker_last_seen_at) from chatbot_settings where guild_id = $1) as worker_last_seen`, [guildId]);
+    const { rows } = await this.pool.query(`select (select count(*)::int from knowledge_documents where guild_id = $1 and enabled) as documents, (select coalesce(min(version), 0)::int from knowledge_documents where guild_id = $1 and enabled) as canonical_version, (select count(*)::int from knowledge_chunks where guild_id = $1 and source_type = 'canonical') as canonical_chunks, (select count(*)::int from knowledge_chunks where guild_id = $1 and source_type = 'message' and (expires_at is null or expires_at > now())) as message_chunks, (select max(created_at) from knowledge_chunks where guild_id = $1) as last_ingestion, (select max(last_indexed_at) from chatbot_settings where guild_id = $1) as last_indexed, (select max(worker_last_seen_at) from chatbot_settings where guild_id = $1) as worker_last_seen`, [guildId]);
     return rows[0] ?? {};
   }
 
