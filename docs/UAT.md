@@ -164,6 +164,9 @@ enabled in Discord Developer Portal.
 | K-08 | Owner | Run Purge message knowledge | Message-derived chunks are deleted while canonical documents remain. |
 | K-09 | Maintainer | Remove/invalid Gemini AI Studio key or simulate timeout | Leone sends the safe fallback and the worker stays available. |
 | K-10 | Maintainer | Restart the Render worker | Gateway reconnects, slash commands/admin API remain unaffected, and no duplicate replies occur. |
+| K-11 | Member | In an approved channel, select Smart response and call Leone by name without a mention | Leone shows typing activity and replies; the request is still subject to user and channel cooldowns. |
+| K-12 | Maintainer | Make the primary Gemini model return a 503/high-demand error | Worker tries the configured fallback model, records one successful usage row, and replies without an unintended mention. |
+| K-13 | Maintainer | Make both Gemini models fail or make reply delivery fail once | A single, visible safe fallback is attempted and the worker logs the delivery failure without crashing. |
 
 ## Acceptance record
 

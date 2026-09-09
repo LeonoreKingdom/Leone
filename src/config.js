@@ -25,6 +25,7 @@ const envSchema = z.object({
   LLM_PROVIDER: z.enum(['gemini', 'groq']).default('gemini'),
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().min(1).max(120).default('gemini-3.8-flash'),
+  GEMINI_FALLBACK_MODEL: z.string().min(1).max(120).default('gemini-2.5-flash-lite'),
   GEMINI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(64).max(2000).default(600),
   GEMINI_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(12000),
   GROQ_API_KEY: z.string().optional(),
@@ -48,6 +49,8 @@ const envSchema = z.object({
   // paid usage accidentally.
   CHATBOT_DAILY_REQUEST_LIMIT: z.coerce.number().int().min(0).max(100000).default(100),
   CHATBOT_PER_USER_COOLDOWN_SECONDS: z.coerce.number().int().min(0).max(3600).default(15),
+  CHATBOT_TOPIC_MATCH_MIN_RANK: z.coerce.number().min(0).max(1).default(0.02),
+  CHATBOT_TOPIC_COOLDOWN_SECONDS: z.coerce.number().int().min(0).max(3600).default(45),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 });
 

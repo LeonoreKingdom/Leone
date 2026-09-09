@@ -334,6 +334,10 @@ function createApiRouter({
       settings: { ...settings, channelIds: settings.channel_ids ?? [], triggerMode: settings.trigger_mode, retentionDays: settings.retention_days, perUserCooldownSeconds: settings.per_user_cooldown_seconds, dailyRequestLimit: chatbotDailyLimit(config, settings.daily_request_limit), dailyRequestLimitCap: config.LLM_PROVIDER === 'gemini' ? Number(config.CHATBOT_DAILY_REQUEST_LIMIT) : null },
       channels: bundle.channels.filter((channel) => isPublicChannel(channel, parentNames)).map((channel) => ({ id: channel.id, name: channel.name, type: channel.type, parentId: channel.parent_id ?? null })),
       provider: config.LLM_PROVIDER,
+      primaryModel: chatbotModelDefault(config),
+      fallbackModel: config.LLM_PROVIDER === 'gemini' ? config.GEMINI_FALLBACK_MODEL : null,
+      topicMatchMinRank: Number(config.CHATBOT_TOPIC_MATCH_MIN_RANK),
+      topicCooldownSeconds: Number(config.CHATBOT_TOPIC_COOLDOWN_SECONDS),
       readiness: { llm: config.LLM_PROVIDER === 'gemini' ? Boolean(config.GEMINI_API_KEY) : Boolean(config.GROQ_API_KEY), gemini: Boolean(config.GEMINI_API_KEY), groq: Boolean(config.GROQ_API_KEY), gateway: Boolean(config.DISCORD_TOKEN), database: true },
     });
   }));
@@ -343,7 +347,7 @@ function createApiRouter({
     const input = z.object({
       enabled: z.boolean().optional(),
       channelIds: z.array(snowflake).max(100).optional(),
-      triggerMode: z.enum(['mention_dm', 'auto_response']).optional(),
+      triggerMode: z.enum(['mention_dm', 'called_or_topic', 'auto_response']).optional(),
       retentionDays: z.union([z.literal(7), z.literal(14), z.literal(30)]).optional(),
       perUserCooldownSeconds: z.number().int().min(0).max(3600).optional(),
       dailyRequestLimit: z.number().int().min(0).max(100000).optional(),

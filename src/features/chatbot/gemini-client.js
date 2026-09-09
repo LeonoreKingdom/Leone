@@ -54,7 +54,16 @@ function createGeminiClient(options = {}) {
         });
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
-          const code = response.status === 429 ? 'GEMINI_RATE_LIMITED' : response.status === 408 || response.status === 504 ? 'GEMINI_TIMEOUT' : response.status === 401 || response.status === 403 ? 'GEMINI_AUTH_FAILED' : 'GEMINI_REQUEST_FAILED';
+          const providerStatus = String(body.error?.status ?? '').toUpperCase();
+          const providerMessage = String(body.error?.message ?? '');
+          const temporarilyUnavailable = [500, 502, 503, 529].includes(response.status)
+            || providerStatus === 'UNAVAILABLE'
+            || /high demand|temporarily unavailable|try again later/i.test(providerMessage);
+          const code = response.status === 429 ? 'GEMINI_RATE_LIMITED'
+            : response.status === 408 || response.status === 504 ? 'GEMINI_TIMEOUT'
+              : response.status === 401 || response.status === 403 ? 'GEMINI_AUTH_FAILED'
+                : temporarilyUnavailable ? 'GEMINI_TEMPORARILY_UNAVAILABLE'
+                  : 'GEMINI_REQUEST_FAILED';
           throw new GeminiError(body.error?.message ?? 'Gemini request failed.', code, response.status);
         }
         const parts = body.candidates?.[0]?.content?.parts ?? [];

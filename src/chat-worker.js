@@ -20,7 +20,8 @@ const pool = getPool();
 const repository = new KnowledgeRepository(pool);
 const discordRestClient = new DiscordRestClient({ token: config.DISCORD_TOKEN });
 const llmClient = config.LLM_PROVIDER === 'gemini' ? createGeminiClient({ config }) : createGroqClient({ config });
-const chatbot = createChatbotService({ config, repository, llmClient });
+const fallbackLlmClient = config.LLM_PROVIDER === 'gemini' && config.GEMINI_FALLBACK_MODEL ? llmClient : null;
+const chatbot = createChatbotService({ config, repository, llmClient, fallbackLlmClient });
 const statsSnapshotRepository = config.serverStatsGatewayEnabled
   ? new ServerStatsSnapshotRepository(pool)
   : null;
@@ -57,7 +58,8 @@ const httpServer = http.createServer((request, response) => {
   response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
   const llmReady = config.LLM_PROVIDER === 'gemini' ? Boolean(config.GEMINI_API_KEY) : Boolean(config.GROQ_API_KEY);
   const llmModel = config.LLM_PROVIDER === 'gemini' ? config.GEMINI_MODEL : config.GROQ_MODEL;
-  response.end(JSON.stringify({ status: 'ok', discordReady, llmProvider: config.LLM_PROVIDER, llmReady, llmModel, service: 'leone-chat-worker', timestamp: new Date().toISOString() }));
+  const llmFallbackModel = config.LLM_PROVIDER === 'gemini' ? config.GEMINI_FALLBACK_MODEL : null;
+  response.end(JSON.stringify({ status: 'ok', discordReady, llmProvider: config.LLM_PROVIDER, llmReady, llmModel, llmFallbackModel, service: 'leone-chat-worker', timestamp: new Date().toISOString() }));
 });
 httpServer.listen(httpPort, '0.0.0.0', () => console.log(`Leone chatbot health endpoint listening on ${httpPort}`));
 

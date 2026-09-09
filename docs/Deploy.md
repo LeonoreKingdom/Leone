@@ -169,8 +169,10 @@ Sensitive environment variables for Production and Preview:
 | `LLM_PROVIDER` | Chatbot | Set `gemini`; `groq` remains a compatibility option |
 | `GEMINI_API_KEY` | Chatbot | Server-only key created in Google AI Studio; never expose to Vite |
 | `GEMINI_MODEL` | Chatbot | Account-available Gemini Flash model, e.g. `gemini-3.8-flash` |
+| `GEMINI_FALLBACK_MODEL` | Chatbot | Secondary account-available model used for transient high-demand/rate-limit failures; default `gemini-2.5-flash-lite` |
 | `GEMINI_MAX_OUTPUT_TOKENS`, `GEMINI_REQUEST_TIMEOUT_MS` | Chatbot | Recommended `600` and `12000` |
 | `CHATBOT_DAILY_REQUEST_LIMIT`, `CHATBOT_PER_USER_COOLDOWN_SECONDS` | Chatbot | Free-use guardrail: default/cap `100` successful replies per UTC day and `15` seconds |
+| `CHATBOT_TOPIC_MATCH_MIN_RANK`, `CHATBOT_TOPIC_COOLDOWN_SECONDS` | Chatbot | Smart-response threshold and per-channel cooldown; recommended `0.02` and `45` seconds |
 | `SERVER_STATS_API_KEY` | Optional | 16+ character server-side key for website calls to `/api/server-stats`; never expose to Vite |
 | `STATS_FEATURED_USER_IDS` | Optional | Comma-separated public Discord user IDs to show in admin/website profile cards |
 | `STATS_CITIZEN_ROLE_NAME`, `STATS_ADMIN_ROLE_NAME`, `STATS_MODERATOR_ROLE_NAME` | Optional | Role names for Citizen counts and Admin/Moderator profile selection; defaults are `Citizen`, `Admin`, and `Moderator` |
@@ -221,7 +223,7 @@ Start command: node src/chat-worker.js
 ```
 
 Set the Discord token, guild ID, `DATABASE_URL`, `LLM_PROVIDER=gemini`, Gemini
-variables, and chatbot limits in Render. Keep `GEMINI_API_KEY` server-side; do
+variables (including the fallback model), and chatbot limits in Render. Keep `GEMINI_API_KEY` server-side; do
 not put it in React/Vite or Supabase client storage. The worker enforces the
 configured `CHATBOT_DAILY_REQUEST_LIMIT` as a hard cap, including when an old
 guild row still contains a larger or unlimited value. Google AI Studio's free
@@ -232,6 +234,15 @@ scheduler dispatch. Render Free web services sleep after inactivity, and a
 free Background Worker is not available; the current `type: web` worker can be
 kept warm with the Supabase Cron setup below, but this is best-effort rather
 than an uptime guarantee.
+
+The Chatbot page offers three trigger modes: mention/DM (safe default), Smart
+response (a direct “Leone” call or a strong match to canonical public knowledge,
+with an additional channel cooldown), and auto-response. The worker sends a
+Discord typing indicator while it retrieves context and calls Gemini. If the
+primary model receives a transient high-demand, timeout, or rate-limit error,
+it tries `GEMINI_FALLBACK_MODEL` before returning a consistent safe fallback.
+Generated replies disable Discord mentions; the model cannot execute admin or
+moderation actions.
 
 ### Supabase Cron keepalive for the Render free web service
 

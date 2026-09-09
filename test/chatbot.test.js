@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { redactText, sanitizeResponse } = require('../src/features/chatbot/redaction');
-const { buildPrompt, effectiveDailyLimit, shouldRespond, stripMention } = require('../src/features/chatbot/chatbot-service');
+const { buildPrompt, createChatbotService, effectiveDailyLimit, shouldRespond, stripMention } = require('../src/features/chatbot/chatbot-service');
 const { createGroqClient } = require('../src/features/chatbot/groq-client');
 const { createGeminiClient } = require('../src/features/chatbot/gemini-client');
 const { buildCanonicalDocuments } = require('../src/features/chatbot/knowledge-indexer');
@@ -31,6 +31,49 @@ test('chatbot responds only to enabled approved channels or DMs', () => {
   assert.equal(shouldRespond({ ...base, channelId: '10', mentions: { has: () => false } }, settings, '9'), false);
   assert.equal(shouldRespond({ ...base, guildId: null, channelId: 'dm', mentions: { has: () => false } }, settings, '9'), true);
   assert.equal(shouldRespond({ ...base, channel: { name: 'staff-private' } }, settings, '9'), false);
+});
+
+test('smart response mode answers when Leone is called or a public topic matches', () => {
+  const settings = { enabled: true, channel_ids: ['10'], trigger_mode: 'called_or_topic' };
+  const base = { guildId: '1', channelId: '10', author: { bot: false }, webhookId: null, content: 'Leone, bantu aku', channel: { name: 'general' }, mentions: { has: () => false } };
+  assert.equal(shouldRespond(base, settings, '9', { called: true }), true);
+  assert.equal(shouldRespond({ ...base, content: 'apa fokus server ini?' }, settings, '9', { called: false, topicMatch: true }), true);
+  assert.equal(shouldRespond({ ...base, content: 'obrolan umum' }, settings, '9', { called: false, topicMatch: false }), false);
+});
+
+test('chatbot uses a fallback model, shows typing, and delivers the answer', async () => {
+  let typing = 0;
+  let sent;
+  const repository = {
+    getSettings: async () => ({ enabled: true, channel_ids: ['10'], trigger_mode: 'mention_dm', per_user_cooldown_seconds: 0, daily_request_limit: 10, model: 'gemini-3.8-flash' }),
+    usageCount: async () => 0,
+    search: async () => [],
+    recordUsage: async () => {},
+  };
+  const message = {
+    guildId: '1', channelId: '10', content: '<@9> jelaskan fokus server dalam bahasa Indonesia', author: { id: '2', bot: false }, webhookId: null,
+    mentions: { has: () => true }, channel: { name: 'general', sendTyping: async () => { typing += 1; } },
+    reply: async (payload) => { sent = payload; },
+  };
+  const primary = { chat: async () => { const error = new Error('high demand'); error.code = 'GEMINI_TEMPORARILY_UNAVAILABLE'; error.status = 503; throw error; } };
+  const fallback = { chat: async () => ({ content: 'Leonore’s Kingdom adalah rumah bagi orang berbakat.', model: 'gemini-2.5-flash-lite', usage: { prompt_tokens: 4, completion_tokens: 8 } }) };
+  const service = createChatbotService({ config: { LLM_PROVIDER: 'gemini', GEMINI_MODEL: 'gemini-3.8-flash', GEMINI_FALLBACK_MODEL: 'gemini-2.5-flash-lite', CHATBOT_DAILY_REQUEST_LIMIT: 100, CHATBOT_PER_USER_COOLDOWN_SECONDS: 0, CHATBOT_TOPIC_COOLDOWN_SECONDS: 45, CHATBOT_TOPIC_MATCH_MIN_RANK: 0.02 }, repository, llmClient: primary, fallbackLlmClient: fallback, logger: { warn: () => {}, debug: () => {}, error: () => {} } });
+  const result = await service.handleMessage(message, { botUserId: '9' });
+  assert.equal(result.fallbackUsed, true);
+  assert.match(sent.content, /rumah bagi orang berbakat/);
+  assert.ok(typing >= 1);
+  assert.deepEqual(sent.allowedMentions, { parse: [] });
+});
+
+test('chatbot always attempts a visible fallback when both models fail', async () => {
+  let sent;
+  const repository = { getSettings: async () => ({ enabled: true, channel_ids: ['10'], trigger_mode: 'mention_dm', per_user_cooldown_seconds: 0, daily_request_limit: 10, model: 'gemini-3.8-flash' }), usageCount: async () => 0, search: async () => [], recordUsage: async () => {} };
+  const message = { guildId: '1', channelId: '10', content: '<@9> jelaskan fokus dalam bahasa Indonesia', author: { id: '2', bot: false }, webhookId: null, mentions: { has: () => true }, channel: { name: 'general', sendTyping: async () => {} }, reply: async (payload) => { sent = payload; } };
+  const unavailable = { chat: async () => { const error = new Error('high demand'); error.code = 'GEMINI_TEMPORARILY_UNAVAILABLE'; error.status = 503; throw error; } };
+  const service = createChatbotService({ config: { LLM_PROVIDER: 'gemini', GEMINI_MODEL: 'gemini-3.8-flash', GEMINI_FALLBACK_MODEL: 'gemini-2.5-flash-lite', CHATBOT_DAILY_REQUEST_LIMIT: 100, CHATBOT_PER_USER_COOLDOWN_SECONDS: 0 }, repository, llmClient: unavailable, fallbackLlmClient: unavailable, logger: { warn: () => {}, debug: () => {}, error: () => {} } });
+  const result = await service.handleMessage(message, { botUserId: '9' });
+  assert.equal(result.fallback, true);
+  assert.match(sent.content, /Leone sedang sibuk/);
 });
 
 test('chatbot strips only the bot mention and treats context as untrusted', () => {
@@ -76,6 +119,8 @@ test('Gemini client rejects unsupported tool calls and maps rate limits', async 
   await assert.rejects(() => toolClient.chat({ messages: [{ role: 'user', content: 'do it' }] }), (error) => error.code === 'GEMINI_UNSUPPORTED_RESPONSE');
   const limitedClient = createGeminiClient({ config: { GEMINI_API_KEY: 'test', GEMINI_MODEL: 'gemini-3.8-flash', GEMINI_REQUEST_TIMEOUT_MS: 1000 }, fetchImpl: async () => ({ ok: false, status: 429, json: async () => ({ error: { message: 'quota' } }) }) });
   await assert.rejects(() => limitedClient.chat({ messages: [{ role: 'user', content: 'hi' }] }), (error) => error.code === 'GEMINI_RATE_LIMITED');
+  const unavailableClient = createGeminiClient({ config: { GEMINI_API_KEY: 'test', GEMINI_MODEL: 'gemini-3.8-flash', GEMINI_REQUEST_TIMEOUT_MS: 1000 }, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({ error: { status: 'UNAVAILABLE', message: 'This model is currently experiencing high demand.' } }) }) });
+  await assert.rejects(() => unavailableClient.chat({ messages: [{ role: 'user', content: 'hi' }] }), (error) => error.code === 'GEMINI_TEMPORARILY_UNAVAILABLE');
 });
 
 test('canonical indexer excludes private-looking channels and includes server identity', () => {

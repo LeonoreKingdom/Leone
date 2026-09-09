@@ -65,7 +65,9 @@ Current constraints:
 ### G-07 — Interactive public chatbot
 
 Add a bounded Leone chat experience for direct mentions in owner-approved public
-channels and DMs. The first provider is Gemini AI Studio through the Gemini
+channels and DMs. An optional Smart response mode can answer a direct “Leone”
+call or a strong match to indexed public topics; it remains rate-limited and is
+never enabled implicitly. The first provider is Gemini AI Studio through the Gemini
 Developer API. The worker uses RAG over canonical server documents and new redacted messages
 from approved channels; it performs no historical backfill and never executes
 moderation or server-administration tools.
@@ -75,8 +77,10 @@ chunks (7/14/30-day retention), and operational usage metadata. Supabase
 PostgreSQL full-text search is the initial retrieval mechanism; embeddings are a
 later, measured optimization. Admins control enablement, channel allowlist,
 trigger mode, retention, cooldown, daily quota, model, reindex, and purge from
-the Chatbot page. Vercel serves these controls; Render runs `node
-src/chat-worker.js`.
+the Chatbot page. The worker shows a Discord typing indicator while waiting,
+uses a configured fallback model for transient provider failures, and returns a
+single safe fallback when delivery or both model attempts fail. Vercel serves
+these controls; Render runs `node src/chat-worker.js`.
 
 ### G-01 — Durable data
 
@@ -729,7 +733,7 @@ Recommended defaults are shown first:
 4. **Weather locality:** select the exact BMKG ADM4 code and public display label.
 5. **Schedule defaults:** disabled, `Asia/Jakarta`, 15-minute restart grace period, no default days/time until owner configuration.
 6. **Free hosting:** use Vercel Hobby + Supabase Free + Cloudflare DNS for development/beta; approve upgrades when the documented limits or reliability thresholds are reached.
-7. **Gateway behavior:** the Render worker handles mention/DM chatbot events only; Vercel remains authoritative for commands and components.
+7. **Gateway behavior:** the Render worker handles mention/DM chatbot events and optional Smart response events only in approved public channels; Vercel remains authoritative for commands and components.
 8. **Backup destination:** choose an encrypted destination outside Supabase and a retention owner before production.
 9. **Admin capabilities:** identify exact Discord role IDs for configuration, greeting management, audit viewing, and abuse-response access.
 
