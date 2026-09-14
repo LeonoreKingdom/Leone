@@ -357,6 +357,8 @@ function createApiRouter({
       fallbackModel: config.LLM_PROVIDER === 'gemini' ? config.GEMINI_FALLBACK_MODEL : null,
       topicMatchMinRank: Number(config.CHATBOT_TOPIC_MATCH_MIN_RANK),
       topicCooldownSeconds: Number(config.CHATBOT_TOPIC_COOLDOWN_SECONDS),
+      contextTurns: Number(config.CHATBOT_CONTEXT_TURNS),
+      contextTtlSeconds: Number(config.CHATBOT_CONTEXT_TTL_SECONDS),
       readiness: { llm: config.LLM_PROVIDER === 'gemini' ? Boolean(config.GEMINI_API_KEY) : Boolean(config.GROQ_API_KEY), gemini: Boolean(config.GEMINI_API_KEY), groq: Boolean(config.GROQ_API_KEY), gateway: Boolean(config.DISCORD_TOKEN), database: true },
     });
   }));

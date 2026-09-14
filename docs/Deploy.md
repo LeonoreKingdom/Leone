@@ -180,6 +180,7 @@ Sensitive environment variables for Production and Preview:
 | `GEMINI_MAX_OUTPUT_TOKENS`, `GEMINI_REQUEST_TIMEOUT_MS` | Chatbot | Recommended `600` and `12000` |
 | `CHATBOT_DAILY_REQUEST_LIMIT`, `CHATBOT_PER_USER_COOLDOWN_SECONDS` | Chatbot | Free-use guardrail: default/cap `300` successful replies per UTC day and `8` seconds |
 | `CHATBOT_TOPIC_MATCH_MIN_RANK`, `CHATBOT_TOPIC_COOLDOWN_SECONDS` | Chatbot | Smart-response threshold and per-channel cooldown; recommended `0.02` and `30` seconds |
+| `CHATBOT_CONTEXT_TURNS`, `CHATBOT_CONTEXT_TTL_SECONDS` | Chatbot | Ephemeral short-term conversation memory; recommended `4` turns and `1800` seconds. Raw history is not persisted in Supabase. |
 | `SERVER_STATS_API_KEY` | Optional | 16+ character server-side key for website calls to `/api/server-stats`; never expose to Vite |
 | `STATS_FEATURED_USER_IDS` | Optional | Comma-separated public Discord user IDs to show in admin/website profile cards |
 | `STATS_CITIZEN_ROLE_NAME`, `STATS_ADMIN_ROLE_NAME`, `STATS_MODERATOR_ROLE_NAME` | Optional | Role names for Citizen counts and Admin/Moderator profile selection; defaults are `Citizen`, `Admin`, and `Moderator` |

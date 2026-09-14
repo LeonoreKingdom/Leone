@@ -101,6 +101,49 @@ test('chatbot allows casual and educational answers without matching server cont
   assert.match(user.content, /no matching context/);
 });
 
+test('chatbot includes bounded recent conversation for short follow-up questions', () => {
+  const messages = buildPrompt({
+    query: 'Buktikan',
+    chunks: [],
+    conversation: [
+      { role: 'user', content: 'Jelaskan asal-usul identitas trigonometri.' },
+      { role: 'assistant', content: 'Identitas trigonometri dapat diturunkan dari lingkaran satuan.' },
+    ],
+  });
+  assert.equal(messages[1].role, 'user');
+  assert.match(messages[1].content, /asal-usul identitas trigonometri/);
+  assert.equal(messages[2].role, 'assistant');
+  assert.match(messages[2].content, /lingkaran satuan/);
+  assert.match(messages[3].content, /Current member question:\nBuktikan/);
+  assert.match(messages[0].content, /Recent conversation messages/);
+});
+
+test('chatbot carries the previous answer into the next message without persistence', async () => {
+  const prompts = [];
+  const replies = [];
+  const repository = {
+    getSettings: async () => ({ enabled: true, channel_ids: ['context-channel'], trigger_mode: 'mention_dm', per_user_cooldown_seconds: 0, daily_request_limit: 10, model: 'gemini-3.8-flash' }),
+    usageCount: async () => 0,
+    search: async () => [],
+    recordUsage: async () => {},
+  };
+  const message = {
+    guildId: 'context-guild', channelId: 'context-channel', content: '<@9> jelaskan asal-usul identitas trigonometri', author: { id: 'context-user', bot: false }, webhookId: null,
+    mentions: { has: () => true }, channel: { name: 'leone', sendTyping: async () => {} },
+    reply: async (payload) => { replies.push(payload.content); },
+  };
+  const llm = { chat: async ({ messages }) => { prompts.push(messages); return { content: prompts.length === 1 ? 'Identitas ini diturunkan dari lingkaran satuan.' : 'Baik, kita buktikan langkah demi langkah.', model: 'gemini-3.8-flash', usage: { prompt_tokens: 5, completion_tokens: 8 } }; } };
+  const service = createChatbotService({ config: { LLM_PROVIDER: 'gemini', GEMINI_MODEL: 'gemini-3.8-flash', GEMINI_FALLBACK_MODEL: 'gemini-3.5-flash-lite', CHATBOT_DAILY_REQUEST_LIMIT: 100, CHATBOT_PER_USER_COOLDOWN_SECONDS: 0, CHATBOT_TOPIC_COOLDOWN_SECONDS: 45, CHATBOT_CONTEXT_TURNS: 4, CHATBOT_CONTEXT_TTL_SECONDS: 1800 }, repository, llmClient: llm, logger: { warn: () => {}, debug: () => {}, error: () => {} } });
+  await service.handleMessage(message, { botUserId: '9' });
+  message.content = '<@9> Buktikan';
+  await service.handleMessage(message, { botUserId: '9' });
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[1][1].content, /asal-usul identitas trigonometri/);
+  assert.match(prompts[1][2].content, /lingkaran satuan/);
+  assert.match(prompts[1][3].content, /Current member question:\nBuktikan/);
+  assert.match(replies[1], /buktikan langkah demi langkah/);
+});
+
 test('chatbot infers Leone addressing style from owner, Leanne, staff, and members', () => {
   assert.equal(inferAddressingClass({ author: { id: '1', username: 'owner' }, guild: { ownerId: '1' } }), 'daddy');
   assert.equal(inferAddressingClass({ author: { id: '1427688270363627675', username: 'someone' }, guild: { ownerId: '1' } }), 'mommy');

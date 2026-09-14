@@ -38,3 +38,7 @@ services:
         value: "0.02"
       - key: CHATBOT_TOPIC_COOLDOWN_SECONDS
         value: "30"
+      - key: CHATBOT_CONTEXT_TURNS
+        value: "4"
+      - key: CHATBOT_CONTEXT_TTL_SECONDS
+        value: "1800"

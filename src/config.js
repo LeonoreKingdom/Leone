@@ -51,6 +51,8 @@ const envSchema = z.object({
   CHATBOT_PER_USER_COOLDOWN_SECONDS: z.coerce.number().int().min(0).max(3600).default(8),
   CHATBOT_TOPIC_MATCH_MIN_RANK: z.coerce.number().min(0).max(1).default(0.02),
   CHATBOT_TOPIC_COOLDOWN_SECONDS: z.coerce.number().int().min(0).max(3600).default(30),
+  CHATBOT_CONTEXT_TURNS: z.coerce.number().int().min(0).max(12).default(4),
+  CHATBOT_CONTEXT_TTL_SECONDS: z.coerce.number().int().min(60).max(86400).default(1800),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 });
 
