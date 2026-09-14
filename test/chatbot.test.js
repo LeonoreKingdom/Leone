@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const { redactText, sanitizeResponse } = require('../src/features/chatbot/redaction');
 const { buildPrompt, createChatbotService, effectiveDailyLimit, inferAddressingClass, shouldRespond, stripMention } = require('../src/features/chatbot/chatbot-service');
+const { ensureOpeningAddress } = require('../src/features/chatbot/persona-config');
 const { createGroqClient } = require('../src/features/chatbot/groq-client');
 const { createGeminiClient } = require('../src/features/chatbot/gemini-client');
 const { buildCanonicalDocuments } = require('../src/features/chatbot/knowledge-indexer');
@@ -51,7 +52,7 @@ test('chatbot uses a fallback model, shows typing, and delivers the answer', asy
     recordUsage: async () => {},
   };
   const message = {
-    guildId: '1', channelId: '10', content: '<@9> jelaskan fokus server dalam bahasa Indonesia', author: { id: '2', bot: false }, webhookId: null,
+    guildId: '1', channelId: '10', content: '<@9> jelaskan fokus server dalam bahasa Indonesia', author: { id: '2', bot: false }, guild: { ownerId: '2' }, webhookId: null,
     mentions: { has: () => true }, channel: { name: 'general', sendTyping: async () => { typing += 1; } },
     reply: async (payload) => { sent = payload; },
   };
@@ -60,6 +61,7 @@ test('chatbot uses a fallback model, shows typing, and delivers the answer', asy
   const service = createChatbotService({ config: { LLM_PROVIDER: 'gemini', GEMINI_MODEL: 'gemini-3.8-flash', GEMINI_FALLBACK_MODEL: 'gemini-3.5-flash-lite', CHATBOT_DAILY_REQUEST_LIMIT: 100, CHATBOT_PER_USER_COOLDOWN_SECONDS: 0, CHATBOT_TOPIC_COOLDOWN_SECONDS: 45, CHATBOT_TOPIC_MATCH_MIN_RANK: 0.02 }, repository, llmClient: primary, fallbackLlmClient: fallback, logger: { warn: () => {}, debug: () => {}, error: () => {} } });
   const result = await service.handleMessage(message, { botUserId: '9' });
   assert.equal(result.fallbackUsed, true);
+  assert.match(sent.content, /^Daddy,/);
   assert.match(sent.content, /rumah bagi orang berbakat/);
   assert.ok(typing >= 1);
   assert.deepEqual(sent.allowedMentions, { parse: [] });
@@ -104,6 +106,13 @@ test('chatbot infers Leone addressing style from owner, Leanne, staff, and membe
   assert.equal(inferAddressingClass({ author: { id: '1427688270363627675', username: 'someone' }, guild: { ownerId: '1' } }), 'mommy');
   assert.equal(inferAddressingClass({ author: { id: '2', username: 'admin' }, member: { roles: [{ name: 'Admin' }] } }), 'kak');
   assert.equal(inferAddressingClass({ author: { id: '3', username: 'citizen' }, member: { roles: [{ name: 'Citizen' }] } }), 'kamu');
+});
+
+test('chatbot keeps family salutation on every response while allowing normal pronouns afterward', () => {
+  assert.equal(ensureOpeningAddress('Waduh, mau bikin aku makin pintar ya?', 'daddy'), 'Daddy, Waduh, mau bikin aku makin pintar ya?');
+  assert.equal(ensureOpeningAddress('Daddy, siap membantu.', 'daddy'), 'Daddy, siap membantu.');
+  assert.equal(ensureOpeningAddress('Kalau kamu mau, kita bisa lanjut.', 'daddy'), 'Daddy, Kalau kamu mau, kita bisa lanjut.');
+  assert.equal(ensureOpeningAddress('Halo, ada yang bisa kubantu?', 'kamu'), 'Halo, ada yang bisa kubantu?');
 });
 
 test('Gemini free-use cap wins over stale or unlimited guild settings', () => {

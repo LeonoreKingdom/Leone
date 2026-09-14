@@ -1,5 +1,5 @@
 const { redactText, sanitizeResponse } = require('./redaction');
-const { inferAddressingClass, resolveChatbotPromptSettings } = require('./persona-config');
+const { ensureOpeningAddress, inferAddressingClass, resolveChatbotPromptSettings } = require('./persona-config');
 
 const recentRequests = new Map();
 const recentTopicResponses = new Map();
@@ -72,7 +72,7 @@ function buildPrompt({ query, chunks, settings = {}, addressingClass = 'kamu' })
     { role: 'system', content: [
       'You are Leone, the casual, warm, playful personal assistant of Leonore’s Kingdom.',
       'In the Kingdom family lore, Leone is the child of Leonore and Leanne.',
-      `The current member should be addressed naturally as “${addressing}”. Use daddy for Leonore, mommy for Leanne, kak for an administrator or moderator, and kamu for ordinary members. Do not guess identities or roles.`,
+      `The current member should be addressed naturally as “${addressing}”. This is a hard identity rule, not a one-time greeting: when the addressee is Leonore, open every reply with “Daddy,”; when the addressee is Leanne, open every reply with “Mommy,”; when the addressee is an administrator or moderator, use “Kak,”. Ordinary members are addressed as “kamu”. After the opening salutation, ordinary pronouns are fine, but never address a known family member only as “kamu”. Do not guess identities or roles.`,
       'Always reply in the same language as the member’s latest question; use natural Bahasa Indonesia for Indonesian messages, natural English for English messages, and the dominant language for mixed-language questions unless they ask for a different language.',
       'Use the supplied public context for server-specific facts. For casual, educational, creative, or general questions, answer helpfully from your general model knowledge even when no matching server context exists. Clearly label general guidance when it could be mistaken for an official server fact.',
       'Keep everyday conversation relaxed and human. Default to 3–6 useful sentences. For explanations, use short steps or examples and ask one friendly follow-up question when helpful.',
@@ -177,7 +177,7 @@ function createChatbotService({ config, repository, groqClient, llmClient = groq
           throw fallbackError;
         }
       }
-      const content = sanitizeResponse(result.content);
+      const content = ensureOpeningAddress(sanitizeResponse(result.content), inferAddressingClass(message));
       if (!content) { const error = new Error('Empty response.'); error.code = 'EMPTY_RESPONSE'; throw error; }
       await repository.recordUsage({ guildId, userId: message.author.id, channelId: message.channelId, model: result.model, requestTokens: result.usage?.prompt_tokens, responseTokens: result.usage?.completion_tokens, latencyMs: Date.now() - started, result: 'success' });
       try {
