@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { redactText, sanitizeResponse } = require('../src/features/chatbot/redaction');
-const { buildPrompt, createChatbotService, effectiveDailyLimit, shouldRespond, stripMention } = require('../src/features/chatbot/chatbot-service');
+const { buildPrompt, createChatbotService, effectiveDailyLimit, inferAddressingClass, shouldRespond, stripMention } = require('../src/features/chatbot/chatbot-service');
 const { createGroqClient } = require('../src/features/chatbot/groq-client');
 const { createGeminiClient } = require('../src/features/chatbot/gemini-client');
 const { buildCanonicalDocuments } = require('../src/features/chatbot/knowledge-indexer');
@@ -85,6 +85,27 @@ test('chatbot strips only the bot mention and treats context as untrusted', () =
   assert.match(messages[0].content, /Bahasa Indonesia/);
 });
 
+test('chatbot allows casual and educational answers without matching server context', () => {
+  const [system, user] = buildPrompt({
+    query: 'jelaskan trigonometri dengan contoh sederhana',
+    chunks: [],
+    settings: { responseStyle: 'Use a relaxed tutor voice.', responseRules: 'Answer general questions helpfully.' },
+    addressingClass: 'kamu',
+  });
+  assert.match(system.content, /general model knowledge/);
+  assert.match(system.content, /3–6 useful sentences/);
+  assert.match(system.content, /Use a relaxed tutor voice/);
+  assert.match(system.content, /Answer general questions helpfully/);
+  assert.match(user.content, /no matching context/);
+});
+
+test('chatbot infers Leone addressing style from owner, Leanne, staff, and members', () => {
+  assert.equal(inferAddressingClass({ author: { id: '1', username: 'owner' }, guild: { ownerId: '1' } }), 'daddy');
+  assert.equal(inferAddressingClass({ author: { id: '1427688270363627675', username: 'someone' }, guild: { ownerId: '1' } }), 'mommy');
+  assert.equal(inferAddressingClass({ author: { id: '2', username: 'admin' }, member: { roles: [{ name: 'Admin' }] } }), 'kak');
+  assert.equal(inferAddressingClass({ author: { id: '3', username: 'citizen' }, member: { roles: [{ name: 'Citizen' }] } }), 'kamu');
+});
+
 test('Gemini free-use cap wins over stale or unlimited guild settings', () => {
   assert.equal(effectiveDailyLimit({ daily_request_limit: 500 }, { CHATBOT_DAILY_REQUEST_LIMIT: 100 }), 100);
   assert.equal(effectiveDailyLimit({ daily_request_limit: 0 }, { CHATBOT_DAILY_REQUEST_LIMIT: 100 }), 100);
@@ -124,9 +145,10 @@ test('Gemini client rejects unsupported tool calls and maps rate limits', async 
 });
 
 test('canonical indexer excludes private-looking channels and includes server identity', () => {
-  const docs = buildCanonicalDocuments({ guild: { name: 'Kingdom' }, channels: [{ id: '1', type: 0, name: 'general', topic: 'Welcome' }, { id: '2', type: 0, name: 'staff-private' }], roles: [{ id: '3', name: 'Citizen', managed: false }, { id: '4', name: 'Bot', managed: true }] });
+  const docs = buildCanonicalDocuments({ guild: { name: 'Kingdom' }, channels: [{ id: '1', type: 0, name: 'general', topic: 'Welcome' }, { id: '2', type: 0, name: 'staff-private' }], roles: [{ id: '3', name: 'Citizen', managed: false }, { id: '4', name: 'Bot', managed: true }] }, { knowledgeIndex: 'Newcomer FAQ: say hello in general.' });
   assert.ok(docs.some((doc) => doc.sourceKey === 'server.identity'));
-  assert.ok(docs.every((doc) => doc.version === 2));
+  assert.ok(docs.every((doc) => doc.version === 3));
+  assert.ok(docs.some((doc) => doc.sourceKey === 'config.knowledge_index'));
   assert.ok(docs.some((doc) => doc.sourceKey === 'channel.1'));
   assert.ok(!docs.some((doc) => doc.sourceKey === 'channel.2'));
   assert.ok(!docs.some((doc) => doc.sourceKey === 'role.4'));

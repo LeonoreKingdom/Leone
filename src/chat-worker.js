@@ -133,6 +133,7 @@ async function ensureCanonicalKnowledge() {
     guildId: config.DISCORD_GUILD_ID,
     restClient: discordRestClient,
     repository,
+    settings,
   });
   console.log('chatbot.canonical_reindex_succeeded', result);
 }

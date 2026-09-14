@@ -44,7 +44,8 @@ async function execute(interaction) {
       {
         name: '💙 The heart of the Kingdom',
         value: [
-          `Founded and led by **Leonore**, with <@${LEANNE_USER_ID}> — **Leanne, his girlfriend and partner in the Kingdom** — beside him.`,
+          `Founded and led by **Leonore**, with <@${LEANNE_USER_ID}> — **Leanne, his partner and co-parent in the Kingdom family lore** — beside him.`,
+          'In that family lore, Leone is their child as well as the Kingdom’s personal assistant.',
           'The staff team helps protect our safe space and keeps the Kingdom welcoming and organized.',
         ].join('\n'),
       },

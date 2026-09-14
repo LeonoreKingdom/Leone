@@ -66,7 +66,8 @@ async function execute(interaction) {
         value: [
           formatRole(supremeRoyaltyRole, 'Supreme Royalty'),
           `<@${guild.ownerId}> — **Leonore**, Owner & Founder`,
-          `<@${LEANNE_USER_ID}> — **Leanne**, Leonore’s Girlfriend & Royal Partner`,
+          `<@${LEANNE_USER_ID}> — **Leanne**, Leonore’s Partner & Royal Co-Parent`,
+          'Leone is their child in the Kingdom family lore and serves as the personal assistant.',
           "Together, they represent the Kingdom's highest royal leadership.",
         ].join('\n'),
       },

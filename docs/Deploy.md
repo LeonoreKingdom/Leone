@@ -67,6 +67,7 @@ Apply migrations in filename order:
 202608130001_chatbot_knowledge.sql
 202608130002_chatbot_worker_heartbeat.sql
 20260909190248_chatbot_smart_response.sql
+20260914120000_chatbot_persona_settings.sql
 leone_render_keepalive (applied through Supabase; local file: `202609090001_leone_render_keepalive.sql`)
 ```
 
@@ -89,6 +90,11 @@ The chatbot migration creates server-only `chatbot_settings`,
 `knowledge_documents`, `knowledge_chunks`, and `chat_usage` tables. Raw prompts
 and responses are not persisted; message-derived chunks use the configured
 7/14/30-day retention.
+
+The persona migration adds owner-editable `knowledge_index`, `response_style`,
+and `response_rules` fields to `chatbot_settings`. These are server-only settings
+read by the Gateway worker; never expose them from a public client. After editing
+the knowledge index in Admin → Chatbot, run **Reindex canonical knowledge**.
 
 ### Bonds JSON migration
 

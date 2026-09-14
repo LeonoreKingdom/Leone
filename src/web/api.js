@@ -10,6 +10,14 @@ const { GreetingRepository } = require('../features/automation/greetings/greetin
 const { KnowledgeRepository } = require('../features/chatbot/knowledge-repository');
 const { reindexCanonical } = require('../features/chatbot/knowledge-indexer');
 const { isPublicChannel } = require('../features/chatbot/knowledge-indexer');
+const {
+  DEFAULT_KNOWLEDGE_INDEX,
+  DEFAULT_RESPONSE_RULES,
+  DEFAULT_RESPONSE_STYLE,
+  MAX_KNOWLEDGE_INDEX_LENGTH,
+  MAX_RESPONSE_RULES_LENGTH,
+  MAX_RESPONSE_STYLE_LENGTH,
+} = require('../features/chatbot/persona-config');
 const { BondService } = require('../features/relationships/bond-service');
 const { createDefaultBondStore } = require('../features/relationships/bond-store');
 const { createServerStatsService } = require('../features/kingdom/server-stats/service');
@@ -331,7 +339,18 @@ function createApiRouter({
     ]);
     const parentNames = new Map(bundle.channels.filter((channel) => channel.type === 4).map((item) => [item.id, item.name]));
     response.json({
-      settings: { ...settings, channelIds: settings.channel_ids ?? [], triggerMode: settings.trigger_mode, retentionDays: settings.retention_days, perUserCooldownSeconds: settings.per_user_cooldown_seconds, dailyRequestLimit: chatbotDailyLimit(config, settings.daily_request_limit), dailyRequestLimitCap: config.LLM_PROVIDER === 'gemini' ? Number(config.CHATBOT_DAILY_REQUEST_LIMIT) : null },
+      settings: {
+        ...settings,
+        channelIds: settings.channel_ids ?? [],
+        triggerMode: settings.trigger_mode,
+        retentionDays: settings.retention_days,
+        perUserCooldownSeconds: settings.per_user_cooldown_seconds,
+        dailyRequestLimit: chatbotDailyLimit(config, settings.daily_request_limit),
+        dailyRequestLimitCap: config.LLM_PROVIDER === 'gemini' ? Number(config.CHATBOT_DAILY_REQUEST_LIMIT) : null,
+        knowledgeIndex: settings.knowledge_index ?? DEFAULT_KNOWLEDGE_INDEX,
+        responseStyle: settings.response_style ?? DEFAULT_RESPONSE_STYLE,
+        responseRules: settings.response_rules ?? DEFAULT_RESPONSE_RULES,
+      },
       channels: bundle.channels.filter((channel) => isPublicChannel(channel, parentNames)).map((channel) => ({ id: channel.id, name: channel.name, type: channel.type, parentId: channel.parent_id ?? null })),
       provider: config.LLM_PROVIDER,
       primaryModel: chatbotModelDefault(config),
@@ -352,6 +371,9 @@ function createApiRouter({
       perUserCooldownSeconds: z.number().int().min(0).max(3600).optional(),
       dailyRequestLimit: z.number().int().min(0).max(100000).optional(),
       model: z.string().trim().min(1).max(120).nullable().optional(),
+      knowledgeIndex: z.string().max(MAX_KNOWLEDGE_INDEX_LENGTH).optional(),
+      responseStyle: z.string().max(MAX_RESPONSE_STYLE_LENGTH).optional(),
+      responseRules: z.string().max(MAX_RESPONSE_RULES_LENGTH).optional(),
     }).parse(request.body);
     const bundle = await restClient.getGuildBundle(request.auth.guildId, { refresh: true });
     const parentNames = new Map(bundle.channels.filter((channel) => channel.type === 4).map((channel) => [channel.id, channel.name]));
@@ -368,6 +390,9 @@ function createApiRouter({
       perUserCooldownSeconds: input.perUserCooldownSeconds ?? current.per_user_cooldown_seconds ?? config.CHATBOT_PER_USER_COOLDOWN_SECONDS,
       dailyRequestLimit: chatbotDailyLimit(config, input.dailyRequestLimit ?? current.daily_request_limit ?? config.CHATBOT_DAILY_REQUEST_LIMIT),
       model: input.model === undefined ? (current.model ?? chatbotModelDefault(config)) : input.model,
+      knowledgeIndex: input.knowledgeIndex === undefined ? (current.knowledge_index ?? DEFAULT_KNOWLEDGE_INDEX) : input.knowledgeIndex,
+      responseStyle: input.responseStyle === undefined ? (current.response_style ?? DEFAULT_RESPONSE_STYLE) : input.responseStyle,
+      responseRules: input.responseRules === undefined ? (current.response_rules ?? DEFAULT_RESPONSE_RULES) : input.responseRules,
     });
     await audit.record({ guildId: request.auth.guildId, actorUserId: request.auth.userId, action: 'chatbot.settings_update', targetCategory: 'chatbot', metadata: { enabled: saved.enabled, channelCount: saved.channel_ids.length, triggerMode: saved.trigger_mode } });
     response.json(saved);
@@ -378,7 +403,8 @@ function createApiRouter({
   }));
 
   router.post('/admin/chatbot/knowledge/reindex', requireCapability('chatbot.manage'), csrf, asyncRoute(async (request, response) => {
-    const result = await reindexCanonical({ guildId: request.auth.guildId, restClient, repository: knowledge });
+    const settings = await knowledge.getSettings(request.auth.guildId, { cooldown: config.CHATBOT_PER_USER_COOLDOWN_SECONDS, dailyLimit: config.CHATBOT_DAILY_REQUEST_LIMIT, model: chatbotModelDefault(config) });
+    const result = await reindexCanonical({ guildId: request.auth.guildId, restClient, repository: knowledge, settings });
     await audit.record({ guildId: request.auth.guildId, actorUserId: request.auth.userId, action: 'chatbot.knowledge_reindex', targetCategory: 'knowledge', metadata: result });
     response.json(result);
   }));

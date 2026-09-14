@@ -1,4 +1,9 @@
 const { randomUUID } = require('node:crypto');
+const {
+  DEFAULT_KNOWLEDGE_INDEX,
+  DEFAULT_RESPONSE_RULES,
+  DEFAULT_RESPONSE_STYLE,
+} = require('./persona-config');
 
 function json(value) { return JSON.stringify(value ?? {}); }
 
@@ -22,14 +27,26 @@ class KnowledgeRepository {
 
   async getSettings(guildId, defaults = {}) {
     const { rows } = await this.pool.query('select * from chatbot_settings where guild_id = $1', [guildId]);
-    return rows[0] ?? { guild_id: guildId, enabled: false, channel_ids: [], trigger_mode: 'mention_dm', retention_days: 30, per_user_cooldown_seconds: defaults.cooldown ?? 8, daily_request_limit: defaults.dailyLimit ?? 300, model: defaults.model ?? null };
+    return rows[0] ?? {
+      guild_id: guildId,
+      enabled: false,
+      channel_ids: [],
+      trigger_mode: 'mention_dm',
+      retention_days: 30,
+      per_user_cooldown_seconds: defaults.cooldown ?? 8,
+      daily_request_limit: defaults.dailyLimit ?? 300,
+      model: defaults.model ?? null,
+      knowledge_index: defaults.knowledgeIndex ?? DEFAULT_KNOWLEDGE_INDEX,
+      response_style: defaults.responseStyle ?? DEFAULT_RESPONSE_STYLE,
+      response_rules: defaults.responseRules ?? DEFAULT_RESPONSE_RULES,
+    };
   }
 
   async upsertSettings(guildId, input) {
-    const { rows } = await this.pool.query(`insert into chatbot_settings (guild_id, enabled, channel_ids, trigger_mode, retention_days, per_user_cooldown_seconds, daily_request_limit, model, ingestion_started_at, updated_at)
-      values ($1,$2,$3,$4,$5,$6,$7,$8,case when $2 then coalesce((select ingestion_started_at from chatbot_settings where guild_id = $1), now()) else (select ingestion_started_at from chatbot_settings where guild_id = $1) end, now())
-      on conflict (guild_id) do update set enabled=excluded.enabled, channel_ids=excluded.channel_ids, trigger_mode=excluded.trigger_mode, retention_days=excluded.retention_days, per_user_cooldown_seconds=excluded.per_user_cooldown_seconds, daily_request_limit=excluded.daily_request_limit, model=excluded.model, ingestion_started_at=excluded.ingestion_started_at, updated_at=now()
-      returning *`, [guildId, input.enabled, input.channelIds, input.triggerMode, input.retentionDays, input.perUserCooldownSeconds, input.dailyRequestLimit, input.model || null]);
+    const { rows } = await this.pool.query(`insert into chatbot_settings (guild_id, enabled, channel_ids, trigger_mode, retention_days, per_user_cooldown_seconds, daily_request_limit, model, knowledge_index, response_style, response_rules, ingestion_started_at, updated_at)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,case when $2 then coalesce((select ingestion_started_at from chatbot_settings where guild_id = $1), now()) else (select ingestion_started_at from chatbot_settings where guild_id = $1) end, now())
+      on conflict (guild_id) do update set enabled=excluded.enabled, channel_ids=excluded.channel_ids, trigger_mode=excluded.trigger_mode, retention_days=excluded.retention_days, per_user_cooldown_seconds=excluded.per_user_cooldown_seconds, daily_request_limit=excluded.daily_request_limit, model=excluded.model, knowledge_index=excluded.knowledge_index, response_style=excluded.response_style, response_rules=excluded.response_rules, ingestion_started_at=excluded.ingestion_started_at, updated_at=now()
+      returning *`, [guildId, input.enabled, input.channelIds, input.triggerMode, input.retentionDays, input.perUserCooldownSeconds, input.dailyRequestLimit, input.model || null, input.knowledgeIndex ?? DEFAULT_KNOWLEDGE_INDEX, input.responseStyle ?? DEFAULT_RESPONSE_STYLE, input.responseRules ?? DEFAULT_RESPONSE_RULES]);
     return rows[0];
   }
 

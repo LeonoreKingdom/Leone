@@ -296,7 +296,7 @@ test('Kingdom commands preserve personalized content and live routing', async ()
   assert.match(aboutText, /1427688270363627675/);
   assert.match(
     aboutText,
-    /his girlfriend and partner in the Kingdom/,
+    /his partner and co-parent in the Kingdom family lore/,
   );
   assert.match(
     JSON.stringify(

@@ -167,6 +167,10 @@ enabled in Discord Developer Portal.
 | K-11 | Member | In an approved channel, select Smart response and call Leone by name without a mention | Leone shows typing activity and replies; the request is still subject to user and channel cooldowns. |
 | K-12 | Maintainer | Make the primary Gemini model return a 503/high-demand error | Worker tries the configured fallback model, records one successful usage row, and replies without an unintended mention. |
 | K-13 | Maintainer | Make both Gemini models fail or make reply delivery fail once | A single, visible safe fallback is attempted and the worker logs the delivery failure without crashing. |
+| K-14 | Owner | Edit response style/rules and save in Admin → Chatbot | Settings persist after refresh; immutable safety rules remain active. |
+| K-15 | Owner | Add a stable FAQ or onboarding note to the knowledge index, save, then reindex | The status shows the additional canonical document/chunk and Leone can answer from it after reindex. |
+| K-16 | Member | Ask a casual or educational question with no matching server context | Leone answers helpfully in the member’s language using general knowledge, clearly separating it from official server facts. |
+| K-17 | Owner, Leanne, staff, member | Mention Leone from each addressing class | Leone addresses the owner as daddy, Leanne as mommy, staff as kak, and ordinary members as kamu without guessing identities. |
 
 ## Acceptance record
 

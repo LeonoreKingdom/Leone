@@ -77,7 +77,10 @@ chunks (7/14/30-day retention), and operational usage metadata. Supabase
 PostgreSQL full-text search is the initial retrieval mechanism; embeddings are a
 later, measured optimization. Admins control enablement, channel allowlist,
 trigger mode, retention, cooldown, daily quota, model, reindex, and purge from
-the Chatbot page. The worker shows a Discord typing indicator while waiting,
+the Chatbot page. The page also manages an owner-authored canonical knowledge
+index, response style, and response rules. Leone uses a casual conversational
+style for general questions while keeping server-specific claims grounded in
+retrieved public context. The worker shows a Discord typing indicator while waiting,
 uses a configured fallback model for transient provider failures, and returns a
 single safe fallback when delivery or both model attempts fail. Vercel serves
 these controls; Render runs `node src/chat-worker.js`.
