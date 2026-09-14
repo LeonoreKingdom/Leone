@@ -7,7 +7,7 @@ const { ensureOpeningAddress } = require('../src/features/chatbot/persona-config
 const { createGroqClient } = require('../src/features/chatbot/groq-client');
 const { createGeminiClient } = require('../src/features/chatbot/gemini-client');
 const { buildCanonicalDocuments } = require('../src/features/chatbot/knowledge-indexer');
-const { buildBroadTsQuery } = require('../src/features/chatbot/knowledge-repository');
+const { KnowledgeRepository, buildBroadTsQuery } = require('../src/features/chatbot/knowledge-repository');
 
 test('chatbot redacts emails, Discord tokens, and mentions', () => {
   const result = redactText('email me@example.com <@123> token mfa.abcdefghijklmnopqrstuvwxyz1234567890');
@@ -166,4 +166,24 @@ test('canonical indexer excludes private-looking channels and includes server id
 test('knowledge broad search query keeps useful terms from natural language questions', () => {
   const query = buildBroadTsQuery('Halo, jelaskan fokus Leonore Kingdom dalam bahasa Indonesia.');
   assert.equal(query, 'halo:* | fokus:* | leonore:* | kingdom:* | dalam:* | bahasa:* | indonesia:*');
+});
+
+test('chatbot usage summary aggregates application and provider signals without message content', async () => {
+  const queries = [];
+  const repository = new KnowledgeRepository({
+    query: async (sql) => {
+      queries.push(sql);
+      if (sql.includes('today_successful_requests')) return { rows: [{ today_successful_requests: 3, today_input_tokens: 100, today_output_tokens: 25, today_app_rate_limited: 1, today_errors: 2, today_avg_latency_ms: 1200, seven_day_successful_requests: 10, seven_day_input_tokens: 500, seven_day_output_tokens: 150, seven_day_app_rate_limited: 1, seven_day_errors: 2, seven_day_avg_latency_ms: 1100, provider_rate_limited_24h: 1, provider_high_demand_24h: 2, provider_rate_limited_7d: 3, provider_high_demand_7d: 4, last_request_at: '2026-09-14T08:00:00.000Z' }] };
+      if (sql.includes('group by model')) return { rows: [{ model: 'gemini-3.8-flash', requests: 3, input_tokens: 100, output_tokens: 25, avg_latency_ms: 1200 }] };
+      return { rows: [{ created_at: '2026-09-14T08:00:00.000Z', model: 'gemini-3.8-flash', result: 'success', error_code: null, latency_ms: 1200 }] };
+    },
+  });
+  const result = await repository.usageSummary('guild-1');
+  assert.equal(result.today.successfulRequests, 3);
+  assert.equal(result.sevenDays.outputTokens, 150);
+  assert.equal(result.providerSignals.highDemand24h, 2);
+  assert.equal(result.models[0].model, 'gemini-3.8-flash');
+  assert.equal(result.recent[0].error_code, null);
+  assert.equal(queries.length, 3);
+  assert.ok(queries.every((query) => !query.includes('content')));
 });

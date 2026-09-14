@@ -15,6 +15,7 @@ const nav = [
   ['moderation', 'Moderation', 'moderation.read'],
   ['server-admin', 'Server Administration', 'server.roles.read'],
   ['chatbot', 'Chatbot', 'chatbot.manage'],
+  ['monitoring', 'Monitoring', 'chatbot.manage'],
   ['audit', 'Audit Log', 'audit.read'],
 ];
 
@@ -404,6 +405,36 @@ function Chatbot() {
   </section>;
 }
 
+function Monitoring() {
+  const [revision, setRevision] = useState(0);
+  const state = useLoad(() => api('/admin/monitoring'), [revision]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setRevision((value) => value + 1), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  if (state.loading || state.error) return <Status state={state} />;
+  const { usage, limits, provider, worker, generatedAt } = state.data;
+  const number = (value) => Number(value ?? 0).toLocaleString();
+  const latency = (value) => value == null ? '—' : `${number(value)} ms`;
+  const recentFormatters = {
+    created_at: (value) => formatAuditTimestamp(value),
+    latency_ms: (value) => latency(value),
+  };
+  return <section><header><p className="eyebrow">Leone operations and provider signals</p><h1>Monitoring</h1><p className="muted">Auto-refreshes every 30 seconds · last snapshot {formatAuditTimestamp(generatedAt)}</p></header>
+    <div className="cards">
+      <article className="card"><span>Successful today</span><strong>{number(usage.today.successfulRequests)}</strong><small>of {number(limits.dailyRequestLimit)} app limit</small></article>
+      <article className="card"><span>Input tokens today</span><strong>{number(usage.today.inputTokens)}</strong><small>Gemini request metadata</small></article>
+      <article className="card"><span>Output tokens today</span><strong>{number(usage.today.outputTokens)}</strong><small>Gemini response metadata</small></article>
+      <article className="card"><span>Average latency</span><strong>{latency(usage.today.averageLatencyMs)}</strong><small>successful replies</small></article>
+      <article className="card"><span>Worker</span><strong className={worker.configured && worker.llmReady ? 'healthy' : 'danger'}>{worker.configured && worker.llmReady ? 'Ready' : 'Needs attention'}</strong><small>{worker.lastSeenAt ? `last seen ${formatAuditTimestamp(worker.lastSeenAt)}` : 'not seen yet'}</small></article>
+    </div>
+    <Panel title="Leone usage — last 7 days"><div className="cards compact-cards"><article className="card"><span>Successful</span><strong>{number(usage.sevenDays.successfulRequests)}</strong></article><article className="card"><span>App rate-limited</span><strong>{number(usage.sevenDays.appRateLimited)}</strong></article><article className="card"><span>Errors</span><strong className={usage.sevenDays.errors ? 'danger' : 'healthy'}>{number(usage.sevenDays.errors)}</strong></article><article className="card"><span>Average latency</span><strong>{latency(usage.sevenDays.averageLatencyMs)}</strong></article></div><p className="muted">Usage records contain operational metadata only; raw prompts and responses are not stored.</p></Panel>
+    <Panel title={`${provider.name} rate-limit signals`}><div className="cards compact-cards"><article className="card"><span>Rate limited · 24h</span><strong className={usage.providerSignals.rateLimited24h ? 'danger' : 'healthy'}>{number(usage.providerSignals.rateLimited24h)}</strong></article><article className="card"><span>High demand · 24h</span><strong className={usage.providerSignals.highDemand24h ? 'danger' : 'healthy'}>{number(usage.providerSignals.highDemand24h)}</strong></article><article className="card"><span>Rate limited · 7d</span><strong>{number(usage.providerSignals.rateLimited7d)}</strong></article><article className="card"><span>High demand · 7d</span><strong>{number(usage.providerSignals.highDemand7d)}</strong></article></div><p className="muted">{provider.note}</p><div className="actions"><a className="button secondary" href={provider.dashboardUrl} target="_blank" rel="noreferrer">{provider.dashboardLabel}</a><a className="button secondary" href={provider.rateLimitDocsUrl} target="_blank" rel="noreferrer">Rate-limit documentation</a></div></Panel>
+    <Panel title="Usage by model"><DataTable rows={usage.models} columns={['model','requests','input_tokens','output_tokens','avg_latency_ms']} formatters={{ avg_latency_ms: (value) => latency(value) }} /></Panel>
+    <Panel title="Recent requests"><DataTable rows={usage.recent} columns={['created_at','model','result','error_code','latency_ms']} formatters={recentFormatters} /></Panel>
+  </section>;
+}
+
 function ServerAdmin({ canConfig }) {
   const [revision, setRevision] = useState(0);
   const state = useLoad(() => Promise.all([api('/admin/server/roles'), api('/admin/server/channels')]), [revision]);
@@ -525,7 +556,7 @@ function App() {
     location.assign('/');
   }
   const allowed = (capability) => !capability || me.capabilities.includes(capability);
-  const pages = { overview: <Overview />, 'server-stats': <ServerStats />, family: <Family me={me} />, config: <Config canWrite={allowed('config.write')} />, greetings: <Greetings />, moderation: <Moderation />, 'server-admin': <ServerAdmin canConfig={allowed('config.write')} />, chatbot: <Chatbot />, audit: <Audit /> };
+  const pages = { overview: <Overview />, 'server-stats': <ServerStats />, family: <Family me={me} />, config: <Config canWrite={allowed('config.write')} />, greetings: <Greetings />, moderation: <Moderation />, 'server-admin': <ServerAdmin canConfig={allowed('config.write')} />, chatbot: <Chatbot />, monitoring: <Monitoring />, audit: <Audit /> };
   return <div className="shell"><aside><div className="brand"><img className="crest-logo small" src={leoneLogo} alt="Leone" /><div><strong>Leone</strong><span>Royal companion</span></div></div><nav>{nav.filter((item) => allowed(item[2])).map(([key,label]) => <button key={key} className={page === key ? 'active' : ''} onClick={() => { setPage(key); history.replaceState(null, '', key === 'family' ? `/family/${me.user.id}` : `/admin/${key}`); }}>{label}</button>)}</nav><div className="identity"><strong>{me.user.displayName}</strong><span>{me.owner ? 'Guild owner' : 'Kingdom member'}</span><button className="secondary logout" onClick={logout}>Sign out</button></div></aside><main>{pages[page] ?? pages.overview}</main></div>;
 }
 

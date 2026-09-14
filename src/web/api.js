@@ -402,6 +402,41 @@ function createApiRouter({
     response.json(await knowledge.status(request.auth.guildId));
   }));
 
+  router.get('/admin/monitoring', requireCapability('chatbot.manage'), asyncRoute(async (request, response) => {
+    const [usage, settings, status] = await Promise.all([
+      knowledge.usageSummary(request.auth.guildId),
+      knowledge.getSettings(request.auth.guildId, { cooldown: config.CHATBOT_PER_USER_COOLDOWN_SECONDS, dailyLimit: config.CHATBOT_DAILY_REQUEST_LIMIT, model: chatbotModelDefault(config) }),
+      knowledge.status(request.auth.guildId),
+    ]);
+    const isGemini = config.LLM_PROVIDER === 'gemini';
+    response.json({
+      generatedAt: new Date().toISOString(),
+      usage,
+      limits: {
+        dailyRequestLimit: chatbotDailyLimit(config, settings.daily_request_limit),
+        perUserCooldownSeconds: settings.per_user_cooldown_seconds ?? config.CHATBOT_PER_USER_COOLDOWN_SECONDS,
+        topicCooldownSeconds: Number(config.CHATBOT_TOPIC_COOLDOWN_SECONDS),
+      },
+      worker: {
+        lastSeenAt: status.worker_last_seen ?? null,
+        configured: Boolean(config.DISCORD_TOKEN),
+        llmReady: isGemini ? Boolean(config.GEMINI_API_KEY) : Boolean(config.GROQ_API_KEY),
+      },
+      provider: {
+        name: isGemini ? 'Google AI Studio / Gemini' : 'Groq',
+        model: settings.model ?? chatbotModelDefault(config),
+        fallbackModel: isGemini ? config.GEMINI_FALLBACK_MODEL : null,
+        exactQuotaAvailable: false,
+        dashboardLabel: isGemini ? 'Open Google AI Studio' : 'Open Groq Console',
+        dashboardUrl: isGemini ? 'https://aistudio.google.com/' : 'https://console.groq.com/',
+        rateLimitDocsUrl: isGemini ? 'https://ai.google.dev/gemini-api/docs/rate-limits' : 'https://console.groq.com/docs/rate-limits',
+        note: isGemini
+          ? 'Signals below are observed Gemini API errors. Exact project quotas remain visible in Google AI Studio and are not exposed by a Gemini API key.'
+          : 'Provider rate-limit signals are based on recorded application errors.',
+      },
+    });
+  }));
+
   router.post('/admin/chatbot/knowledge/reindex', requireCapability('chatbot.manage'), csrf, asyncRoute(async (request, response) => {
     const settings = await knowledge.getSettings(request.auth.guildId, { cooldown: config.CHATBOT_PER_USER_COOLDOWN_SECONDS, dailyLimit: config.CHATBOT_DAILY_REQUEST_LIMIT, model: chatbotModelDefault(config) });
     const result = await reindexCanonical({ guildId: request.auth.guildId, restClient, repository: knowledge, settings });

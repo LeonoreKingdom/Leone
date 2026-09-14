@@ -99,6 +99,68 @@ class KnowledgeRepository {
     await this.pool.query(`insert into chat_usage (guild_id,user_id,channel_id,model,request_tokens,response_tokens,latency_ms,result,error_code) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [payload.guildId, payload.userId, payload.channelId ?? null, payload.model ?? null, payload.requestTokens ?? null, payload.responseTokens ?? null, payload.latencyMs ?? null, payload.result, payload.errorCode ?? null]);
   }
 
+  async usageSummary(guildId) {
+    const [totalsResult, modelsResult, recentResult] = await Promise.all([
+      this.pool.query(`select
+          count(*) filter (where created_at >= date_trunc('day', now()) and result = 'success')::int as today_successful_requests,
+          coalesce(sum(request_tokens) filter (where created_at >= date_trunc('day', now()) and result = 'success'), 0)::int as today_input_tokens,
+          coalesce(sum(response_tokens) filter (where created_at >= date_trunc('day', now()) and result = 'success'), 0)::int as today_output_tokens,
+          count(*) filter (where created_at >= date_trunc('day', now()) and result = 'rate_limited')::int as today_app_rate_limited,
+          count(*) filter (where created_at >= date_trunc('day', now()) and result = 'error')::int as today_errors,
+          round(avg(latency_ms) filter (where created_at >= date_trunc('day', now()) and result = 'success'))::int as today_avg_latency_ms,
+          count(*) filter (where result = 'success')::int as seven_day_successful_requests,
+          coalesce(sum(request_tokens) filter (where result = 'success'), 0)::int as seven_day_input_tokens,
+          coalesce(sum(response_tokens) filter (where result = 'success'), 0)::int as seven_day_output_tokens,
+          count(*) filter (where result = 'rate_limited')::int as seven_day_app_rate_limited,
+          count(*) filter (where result = 'error')::int as seven_day_errors,
+          round(avg(latency_ms) filter (where result = 'success'))::int as seven_day_avg_latency_ms,
+          count(*) filter (where created_at >= now() - interval '24 hours' and error_code = 'GEMINI_RATE_LIMITED')::int as provider_rate_limited_24h,
+          count(*) filter (where created_at >= now() - interval '24 hours' and error_code = 'GEMINI_TEMPORARILY_UNAVAILABLE')::int as provider_high_demand_24h,
+          count(*) filter (where created_at >= now() - interval '7 days' and error_code = 'GEMINI_RATE_LIMITED')::int as provider_rate_limited_7d,
+          count(*) filter (where created_at >= now() - interval '7 days' and error_code = 'GEMINI_TEMPORARILY_UNAVAILABLE')::int as provider_high_demand_7d,
+          max(created_at) as last_request_at
+        from chat_usage
+        where guild_id = $1 and created_at >= now() - interval '7 days'`, [guildId]),
+      this.pool.query(`select coalesce(model, 'unknown') as model, count(*)::int as requests,
+          coalesce(sum(request_tokens), 0)::int as input_tokens,
+          coalesce(sum(response_tokens), 0)::int as output_tokens,
+          round(avg(latency_ms))::int as avg_latency_ms
+        from chat_usage
+        where guild_id = $1 and result = 'success' and created_at >= now() - interval '7 days'
+        group by model order by requests desc, model`, [guildId]),
+      this.pool.query(`select created_at, model, result, error_code, latency_ms
+        from chat_usage where guild_id = $1 order by created_at desc limit 12`, [guildId]),
+    ]);
+    const totals = totalsResult.rows[0] ?? {};
+    return {
+      today: {
+        successfulRequests: totals.today_successful_requests ?? 0,
+        inputTokens: totals.today_input_tokens ?? 0,
+        outputTokens: totals.today_output_tokens ?? 0,
+        appRateLimited: totals.today_app_rate_limited ?? 0,
+        errors: totals.today_errors ?? 0,
+        averageLatencyMs: totals.today_avg_latency_ms ?? null,
+      },
+      sevenDays: {
+        successfulRequests: totals.seven_day_successful_requests ?? 0,
+        inputTokens: totals.seven_day_input_tokens ?? 0,
+        outputTokens: totals.seven_day_output_tokens ?? 0,
+        appRateLimited: totals.seven_day_app_rate_limited ?? 0,
+        errors: totals.seven_day_errors ?? 0,
+        averageLatencyMs: totals.seven_day_avg_latency_ms ?? null,
+      },
+      providerSignals: {
+        rateLimited24h: totals.provider_rate_limited_24h ?? 0,
+        highDemand24h: totals.provider_high_demand_24h ?? 0,
+        rateLimited7d: totals.provider_rate_limited_7d ?? 0,
+        highDemand7d: totals.provider_high_demand_7d ?? 0,
+      },
+      models: modelsResult.rows,
+      recent: recentResult.rows,
+      lastRequestAt: totals.last_request_at ?? null,
+    };
+  }
+
   async status(guildId) {
     const { rows } = await this.pool.query(`select (select count(*)::int from knowledge_documents where guild_id = $1 and enabled) as documents, (select coalesce(min(version), 0)::int from knowledge_documents where guild_id = $1 and enabled) as canonical_version, (select count(*)::int from knowledge_chunks where guild_id = $1 and source_type = 'canonical') as canonical_chunks, (select count(*)::int from knowledge_chunks where guild_id = $1 and source_type = 'message' and (expires_at is null or expires_at > now())) as message_chunks, (select max(created_at) from knowledge_chunks where guild_id = $1) as last_ingestion, (select max(last_indexed_at) from chatbot_settings where guild_id = $1) as last_indexed, (select max(worker_last_seen_at) from chatbot_settings where guild_id = $1) as worker_last_seen`, [guildId]);
     return rows[0] ?? {};
